@@ -2,13 +2,23 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toBatchOps } from "../tools/seed-batch.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
+
+// html2canvas is loaded from cdnjs in production; tests serve the same npm release locally.
+const vendorDir = fileURLToPath(new URL("./vendor/", import.meta.url));
+const html2canvasPath = join(vendorDir, "package/dist/html2canvas.min.js");
+if (!existsSync(html2canvasPath)) {
+  mkdirSync(vendorDir, { recursive: true });
+  execFileSync("npm", ["pack", "html2canvas@1.4.1", "--silent", "--pack-destination", vendorDir]);
+  execFileSync("tar", ["-xzf", join(vendorDir, "html2canvas-1.4.1.tgz"), "-C", vendorDir]);
+}
 const root = fileURLToPath(new URL("..", import.meta.url));
 const seed = JSON.parse(readFileSync(join(root, "seed.json"), "utf8"));
 const types = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json" };
@@ -35,6 +45,7 @@ after(async () => { await browser.close(); server.close(); });
 export async function openPage({ seed: withSeed = true, width = 390, init = {}, prepare } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 } });
   page.setDefaultTimeout(5000);
+  await page.route("**/html2canvas.min.js", (r) => r.fulfill({ path: html2canvasPath, contentType: "text/javascript" }));
   const ops = withSeed ? toBatchOps(prepare ? prepare(structuredClone(seed)) : seed, 1) : [];
   await page.addInitScript({ content: `window.__mockInit = ${JSON.stringify({ ops, ...init })};` });
   await page.addInitScript({ path: join(root, "tests/mock-claude.js") });
@@ -221,5 +232,74 @@ test("copy term2 from another class", async () => {
   await page.getByRole("alertdialog").getByRole("button", { name: "แทนที่", exact: true }).click();
   await page.waitForFunction(() =>
     JSON.stringify(window.__mock.docs.get("classes/c01").term2TopicIds) === JSON.stringify(window.__mock.docs.get("classes/c04").term2TopicIds));
+  await page.close();
+});
+
+const blobInfo = (page) =>
+  page.evaluate(async () => {
+    const src = document.querySelector('[aria-labelledby="preview-title"] img').src;
+    const b = await (await fetch(src)).blob();
+    const bmp = await createImageBitmap(b);
+    return { width: bmp.width, height: bmp.height, type: b.type };
+  });
+
+async function openSummary(page) {
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.getByRole("tab", { name: "สรุป" }).click();
+  await page.locator("table.sum").waitFor();
+}
+
+test("summary shows every class", async () => {
+  const page = await openPage({ width: 1024 });
+  await openSummary(page);
+  assert.equal(await page.locator("table.sum tbody tr").count(), 26);
+  await page.getByText("มี 20 ห้องที่ยังต้องตรวจ").waitFor();
+  await page.close();
+});
+
+test("png export is 3200px wide", async () => {
+  const page = await openPage({ width: 1024 });
+  await openSummary(page);
+  await page.getByRole("button", { name: "บันทึกเป็น PNG" }).click();
+  await page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" }).locator("img").waitFor();
+  const info = await blobInfo(page);
+  assert.equal(info.width, 3200);
+  assert.ok(info.height > 0);
+  assert.equal(info.type, "image/png");
+  assert.equal(await page.locator("#export-root").count(), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("png export with 12 topics stays 3200px wide", async () => {
+  const many = (s) => { s.classes[0].term2TopicIds = s.topics.slice(0, 12).map((t) => t.id); return s; };
+  const page = await openPage({ width: 1024, prepare: many });
+  await openSummary(page);
+  await page.getByRole("button", { name: "บันทึกเป็น PNG" }).click();
+  await page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" }).locator("img").waitFor();
+  assert.equal((await blobInfo(page)).width, 3200);
+  await page.close();
+});
+
+test("download calls downloads.save", async () => {
+  const page = await openPage({ width: 1024 });
+  await openSummary(page);
+  await page.getByRole("button", { name: "บันทึกเป็น PNG" }).click();
+  const dlg = page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" });
+  await dlg.getByRole("button", { name: "ดาวน์โหลด" }).click();
+  await page.waitForFunction(() => window.__mock.saved.length === 1);
+  const saved = await page.evaluate(() => window.__mock.saved[0]);
+  assert.equal(saved.filename, "term2-2569.png");
+  assert.ok(saved.size > 1000);
+  await page.close();
+});
+
+test("download button hidden when downloads unavailable", async () => {
+  const page = await openPage({ width: 1024, init: { downloadsNull: true } });
+  await openSummary(page);
+  await page.getByRole("button", { name: "บันทึกเป็น PNG" }).click();
+  const dlg = page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" });
+  await dlg.locator("img").waitFor();
+  assert.equal(await dlg.getByRole("button", { name: "ดาวน์โหลด" }).count(), 0);
   await page.close();
 });

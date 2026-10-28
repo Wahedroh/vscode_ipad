@@ -11,6 +11,9 @@ const state = {
   editingId: null,
   confirm: null, // {title, text, ok, run}
   picker: null, // {query}
+  exporting: false,
+  preview: null, // {url, blob}
+  notice: "",
   saveError: null,
 };
 
@@ -20,6 +23,8 @@ const unsaved = new Map();
 const queues = new Map();
 
 let db = null;
+let downloads = null;
+const EXPORT_TITLE = "เนื้อหาคณิตศาสตร์เทอม 2 ปีการศึกษา 2569";
 const app = document.getElementById("app");
 
 const esc = (s) =>
@@ -41,7 +46,97 @@ function body() {
   if (state.status === "loading") return `<p class="muted">กำลังโหลด…</p>`;
   if (state.classes.length === 0)
     return saveAlert() + `<div class="notice"><h2>ยังไม่มีข้อมูล</h2><p class="muted">ยังไม่มีห้องเรียนในฐานข้อมูล กด "เพิ่มห้อง" เพื่อเริ่ม หรือให้ Claude นำเข้าข้อมูลเทอม 1</p></div>${listView()}`;
-  return saveAlert() + listView();
+  return saveAlert() + (state.view === "summary" ? summaryView() : listView());
+}
+
+function summaryTable() {
+  const byId = topicsById();
+  const rows = L.groupByTeacher(state.classes)
+    .flatMap((g) =>
+      g.classes.map((c, i) => {
+        const end = L.topicName(byId, c.term1End.topicId);
+        const topics = c.term2TopicIds.map((id, k) => `<span><b>${k + 1}.</b>${esc(L.topicName(byId, id))}</span>`).join("");
+        return `<tr class="${i === 0 ? "first" : ""}">
+          <td class="teacher">${i === 0 ? esc(g.teacher) : ""}</td>
+          <td>${esc(c.school)} · ${esc(c.room)}</td><td>${esc(c.courseType)}</td>
+          <td>${esc(end)}${c.term1End.status === "partial" ? ` <span class="nowrap">(ยังไม่จบ)</span>` : ""}${c.term1End.note ? `<div class="muted small">${esc(c.term1End.note)}</div>` : ""}</td>
+          <td><div class="topics">${topics || `<span class="muted">ยังไม่ได้เลือก</span>`}</div></td></tr>`;
+      }),
+    )
+    .join("");
+  return `<div class="table-wrap"><table class="sum">
+    <thead><tr><th>ครู</th><th>โรงเรียน · ห้อง</th><th>ประเภท</th><th>จบเทอม 1</th><th>เนื้อหาเทอม 2</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function summaryView() {
+  const pending = state.classes.filter((c) => c.needsReview || !c.teacher.trim()).length;
+  return `${pending ? `<div class="alert"><span>มี ${pending} ห้องที่ยังต้องตรวจ ดูได้จากตัวกรอง "ต้องตรวจ" ในแท็บห้องเรียน</span></div>` : ""}
+    <div class="toolbar"><p class="muted small" style="margin:0">${state.classes.length} ห้อง · ${L.groupByTeacher(state.classes).length} กลุ่มครู</p>
+      <button class="btn primary" data-action="export" ${state.exporting ? "disabled" : ""}>${state.exporting ? "กำลังสร้างภาพ…" : "บันทึกเป็น PNG"}</button></div>
+    ${state.notice ? `<div class="alert" role="status"><span>${esc(state.notice)}</span></div>` : ""}
+    ${summaryTable()}`;
+}
+
+async function exportPng() {
+  await document.fonts.ready;
+  const root = document.createElement("div");
+  root.id = "export-root";
+  root.innerHTML = `<div class="export-head"><h1>${EXPORT_TITLE}</h1><span>ข้อมูล ณ ${new Date().toLocaleDateString("th-TH", { dateStyle: "long" })}</span></div>${summaryTable()}`;
+  document.body.appendChild(root);
+  try {
+    const canvas = await window.html2canvas(root, { scale: 2, backgroundColor: "#FFFFFF", logging: false });
+    return await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/png"));
+  } finally {
+    root.remove();
+  }
+}
+
+async function startExport() {
+  state.exporting = true;
+  state.notice = "";
+  render();
+  try {
+    if (typeof window.html2canvas !== "function") throw new Error("html2canvas not loaded");
+    const blob = await exportPng();
+    state.preview = { blob, url: URL.createObjectURL(blob) };
+  } catch (e) {
+    console.error("export", e);
+    state.notice = "สร้างภาพไม่สำเร็จ ลองโหลดหน้านี้ใหม่แล้วกดอีกครั้ง";
+  } finally {
+    state.exporting = false;
+    render();
+  }
+}
+
+function closePreview() {
+  if (state.preview) URL.revokeObjectURL(state.preview.url);
+  state.preview = null;
+  render();
+}
+
+async function savePng() {
+  try {
+    await downloads.save({ filename: "term2-2569.png", data: state.preview.blob });
+  } catch (e) {
+    if (e?.code === "declined") return;
+    console.error("download", e);
+    state.notice = "บันทึกไฟล์ไม่สำเร็จ ลองแตะค้างที่ภาพเพื่อบันทึกแทน";
+    closePreview();
+  }
+}
+
+function previewView() {
+  const p = state.preview;
+  if (!p) return "";
+  return `<div class="dialog-backdrop" data-action="close-preview"></div>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <div class="sheet-head" style="margin:0"><h2 id="preview-title">ภาพสรุปเทอม 2</h2>
+      <button class="btn icon-btn" data-action="close-preview" aria-label="ปิดภาพ">${ICON_X}</button></div>
+    <p class="muted small" style="margin:0">แตะค้างที่ภาพเพื่อบันทึกลงรูปภาพ</p>
+    <div class="dialog-body"><img class="preview-img" src="${p.url}" alt="ตารางสรุปเนื้อหาเทอม 2 รายครู"></div>
+    ${downloads ? `<div class="toolbar" style="justify-content:flex-end"><button class="btn primary" data-action="download">ดาวน์โหลด</button></div>` : ""}
+  </div>`;
 }
 
 const FILTERS = [["all", "ทั้งหมด"], ["review", "ต้องตรวจ"], ...L.COURSE_TYPES.map((t) => [t, t])];
@@ -342,6 +437,7 @@ app.addEventListener("change", (ev) => {
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
   if (state.confirm) { state.confirm = null; render(); }
+  else if (state.preview) closePreview();
   else if (state.picker) { state.picker = null; render(); }
   else if (state.editingId) closeEditor();
 });
@@ -350,7 +446,10 @@ app.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-action]");
   if (!el) return;
   const a = el.dataset.action;
-  if (a === "view") { state.view = el.dataset.view; render(); }
+  if (a === "view") { state.view = el.dataset.view; state.notice = ""; render(); }
+  else if (a === "export") startExport();
+  else if (a === "close-preview") closePreview();
+  else if (a === "download") savePng();
   else if (a === "filter") { state.filter = el.dataset.filter; render(); }
   else if (a === "add-class") addClass();
   else if (a === "edit") openEditor(el.dataset.classId);
@@ -377,7 +476,7 @@ function render() {
   const keep = active?.id && app.contains(active) && "value" in active
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
     : null;
-  app.innerHTML = header() + body() + editorView() + pickerView() + confirmView();
+  app.innerHTML = header() + body() + editorView() + pickerView() + previewView() + confirmView();
   if (keep) {
     const el = document.getElementById(keep.id);
     if (el) {
@@ -396,6 +495,7 @@ function markLoaded(key) {
 
 async function boot() {
   render();
+  window.claude?.use?.("downloads").then((d) => { downloads = d ?? null; render(); }, () => {});
   db = (await window.claude?.use?.("db")) ?? null;
   if (!db) {
     state.status = "nodb";

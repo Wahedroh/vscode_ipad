@@ -90,6 +90,7 @@ button { cursor: pointer; }
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
 .section { display: grid; gap: var(--s3); padding-block: var(--s4); border-top: 1px solid var(--line); }
+.section p { margin: 0; }
 .section:first-of-type { border-top: 0; padding-top: 0; }
 .field { display: grid; gap: var(--s1); }
 .field label, .label { font-size: .8125rem; font-weight: 500; color: var(--muted); letter-spacing: .01em; }
@@ -97,7 +98,7 @@ button { cursor: pointer; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .switch { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); }
 .switch input { width: 20px; height: 20px; accent-color: var(--warn); }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg { justify-self: start; display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .seg button { min-height: 40px; padding: 0 var(--s4); border: 0; background: var(--card); color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
@@ -139,6 +140,7 @@ button { cursor: pointer; }
 .sum tr.first td { border-top: 2px solid var(--fg); }
 .sum tbody tr:first-child td { border-top: 0; }
 .sum .teacher { font-weight: 600; white-space: nowrap; }
+.sum td:nth-child(3), .sum .nowrap { white-space: nowrap; }
 .sum .topics { display: flex; flex-wrap: wrap; gap: 2px var(--s3); }
 .sum .topics span { white-space: nowrap; }
 .sum .topics b { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
@@ -150,6 +152,7 @@ button { cursor: pointer; }
 #export-root .sum { min-width: 0; font-size: 20px; }
 #export-root .sum th, #export-root .sum td { padding: 12px 16px; }
 #export-root .sum thead th { font-size: 17px; }
+#export-root .small { font-size: 16px; }
 .export-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 24px; }
 .export-head h1 { font-size: 34px; }
 </style>
