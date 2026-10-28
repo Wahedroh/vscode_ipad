@@ -73,3 +73,36 @@ test("no horizontal scroll at 375px", async () => {
   assert.ok(sw <= iw, `${sw} > ${iw}`);
   await page.close();
 });
+
+test("list groups by teacher", async () => {
+  const page = await openPage();
+  await page.getByRole("heading", { name: "นิราซฟัน มะแซ" }).waitFor();
+  const row = page.locator('[data-class-id="c08"]');
+  await row.getByText("ยังไม่จบ").waitFor();
+  await row.getByText("เทอม 2: 5 เรื่อง").waitFor();
+  await row.getByText("ต้องตรวจ").waitFor();
+  await page.close();
+});
+
+test("filter ต้องตรวจ shows 20 rows", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.getByRole("button", { name: "ต้องตรวจ", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 20);
+  await page.getByRole("button", { name: "พื้นฐาน", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 10);
+  await page.close();
+});
+
+test("failed save keeps edit and retry succeeds", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.evaluate(() => { window.__mock.failNextWrite = true; });
+  await page.getByRole("button", { name: "เพิ่มห้อง" }).click();
+  await page.getByRole("alert").getByText("บันทึกไม่สำเร็จ").waitFor();
+  assert.equal(await page.evaluate(() => [...window.__mock.docs.keys()].filter((k) => k.startsWith("classes/")).length), 26);
+  await page.getByRole("button", { name: "ลองใหม่" }).click();
+  await page.waitForFunction(() => [...window.__mock.docs.keys()].filter((k) => k.startsWith("classes/")).length === 27);
+  await page.getByRole("alert").waitFor({ state: "detached" });
+  await page.close();
+});
