@@ -86,3 +86,21 @@ export function slugifyTopic(name, existingIds) {
   for (let n = 2; existingIds.has(id); n++) id = `${base}-${n}`;
   return id;
 }
+
+// Fill missing or mistyped fields so one malformed document can't break rendering.
+export function normalizeClass(raw) {
+  const str = (v) => (typeof v === "string" ? v : "");
+  const end = raw.term1End && typeof raw.term1End === "object" ? raw.term1End : {};
+  return {
+    id: str(raw.id),
+    teacher: str(raw.teacher),
+    school: str(raw.school),
+    room: str(raw.room),
+    grade: str(raw.grade) || "ม.1",
+    courseType: COURSE_TYPES.includes(raw.courseType) ? raw.courseType : "เพิ่มเติม",
+    term1End: { topicId: str(end.topicId), status: end.status === "partial" ? "partial" : "done", note: str(end.note) },
+    term2TopicIds: Array.isArray(raw.term2TopicIds) ? raw.term2TopicIds.filter((x) => typeof x === "string") : [],
+    needsReview: raw.needsReview === true,
+    updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : 0,
+  };
+}

@@ -9,9 +9,12 @@
 
   const listeners = new Set();
   const segs = (p) => p.split("/");
+  // The real runtime delivers frozen snapshot bodies; mirror that so accidental mutation throws in tests.
+  const deepFreeze = (o) => { if (o && typeof o === "object") { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
   const snapDoc = (path) => {
     const data = docs.get(path);
-    return { id: segs(path).at(-1), exists: data !== undefined, data: () => (data === undefined ? undefined : structuredClone(data)), metadata: { fromCache: false, hasPendingWrites: false } };
+    const frozen = data === undefined ? undefined : deepFreeze(structuredClone(data));
+    return { id: segs(path).at(-1), exists: data !== undefined, data: () => frozen, metadata: { fromCache: false, hasPendingWrites: false } };
   };
   const snapCol = (col) => {
     const n = segs(col).length + 1;
@@ -44,7 +47,10 @@
     collection: (col) => ({
       path: col,
       doc: (id) => doc(col + "/" + (id || Math.random().toString(36).slice(2))),
-      onSnapshot: (next) => listen(() => next(snapCol(col))),
+      onSnapshot: (next, error) => {
+        if (init.snapshotError === col) { setTimeout(() => error?.({ code: "revoked", message: "mock" }), 0); return () => {}; }
+        return listen(() => next(snapCol(col)));
+      },
       get: async () => snapCol(col),
     }),
   };
@@ -57,6 +63,7 @@
   window.claude = {
     use: async (name) => {
       await new Promise((r) => setTimeout(r, 10));
+      if (name === "db" && init.useRejects) throw { code: "unavailable", message: "mock" };
       if (name === "db") return init.dbNull ? null : db;
       if (name === "downloads") return init.downloadsNull ? null : downloads;
       return null;

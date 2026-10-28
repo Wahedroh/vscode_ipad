@@ -353,3 +353,61 @@ test("editor keeps scroll position after removing a topic", async () => {
   assert.ok(after > 100, String(after));
   await page.close();
 });
+
+test("db use() rejecting shows a connection error instead of loading forever", async () => {
+  const page = await openPage({ init: { useRejects: true } });
+  await page.getByRole("heading", { name: "เชื่อมต่อฐานข้อมูลไม่ได้" }).waitFor();
+  await page.close();
+});
+
+test("terminal snapshot error shows a connection error", async () => {
+  const page = await openPage({ init: { snapshotError: "classes" } });
+  await page.getByRole("heading", { name: "เชื่อมต่อฐานข้อมูลไม่ได้" }).waitFor();
+  await page.close();
+});
+
+test("malformed class doc does not blank the page", async () => {
+  const bad = (s) => { s.classes.push({ school: "แปลก" }); return s; };
+  const page = await openPage({ prepare: bad });
+  await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 27);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("closing the picker returns focus to its opener", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByRole("button", { name: "เพิ่มเรื่อง" }).click();
+  await page.getByRole("dialog", { name: "เลือกเรื่อง" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "เลือกเรื่อง" }).waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.action), "open-picker");
+  await page.close();
+});
+
+test("tab stays inside the open dialog", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByRole("button", { name: "เพิ่มเรื่อง" }).click();
+  await page.getByRole("dialog", { name: "เลือกเรื่อง" }).waitFor();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest('[aria-labelledby="picker-title"]')), true);
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+Tab");
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest('[aria-labelledby="picker-title"]')), true);
+  await page.close();
+});
+
+test("export waits for fonts after the export surface exists", async () => {
+  const page = await openPage({ width: 1024 });
+  await page.evaluate(() => {
+    Object.defineProperty(document.fonts, "ready", {
+      configurable: true,
+      get() { window.__rootWhenFontsAwaited = !!document.getElementById("export-root"); return Promise.resolve(document.fonts); },
+    });
+  });
+  await openSummary(page);
+  await page.getByRole("button", { name: "บันทึกเป็น PNG" }).click();
+  await page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" }).locator("img").waitFor();
+  assert.equal(await page.evaluate(() => window.__rootWhenFontsAwaited), true);
+  await page.close();
+});

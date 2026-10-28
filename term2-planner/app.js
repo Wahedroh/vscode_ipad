@@ -1,7 +1,7 @@
 import * as L from "./logic.js";
 
 const state = {
-  status: "loading", // loading | ready | nodb
+  status: "loading", // loading | ready | nodb | error
   loaded: { classes: false, topics: false, config: false },
   classes: [],
   topics: [],
@@ -64,6 +64,8 @@ function header() {
 function body() {
   if (state.status === "nodb")
     return `<div class="notice"><h2>เปิดใน claude.ai เพื่อใช้งาน</h2><p class="muted">หน้านี้เก็บข้อมูลในฐานข้อมูลของ Artifact ซึ่งใช้ได้เมื่อเปิดใน claude.ai และลงชื่อเข้าใช้แล้ว</p></div>`;
+  if (state.status === "error")
+    return `<div class="notice"><h2>เชื่อมต่อฐานข้อมูลไม่ได้</h2><p class="muted">โหลดหน้านี้ใหม่อีกครั้ง ถ้ายังไม่ได้ ให้ตรวจว่ายังลงชื่อเข้าใช้ claude.ai อยู่</p></div>`;
   if (state.status === "loading") return `<p class="muted">กำลังโหลด…</p>`;
   if (state.classes.length === 0)
     return saveAlert() + `<div class="notice"><h2>ยังไม่มีข้อมูล</h2><p class="muted">ยังไม่มีห้องเรียนในฐานข้อมูล กด "เพิ่มห้อง" เพื่อเริ่ม หรือให้ Claude นำเข้าข้อมูลเทอม 1</p></div>${listView()}`;
@@ -100,12 +102,13 @@ function summaryView() {
 }
 
 async function exportPng() {
-  await document.fonts.ready;
   const root = document.createElement("div");
   root.id = "export-root";
   root.innerHTML = `<div class="export-head"><h1>${EXPORT_TITLE}</h1><span>ข้อมูล ณ ${new Date().toLocaleDateString("th-TH", { dateStyle: "long" })}</span></div>${summaryTable()}`;
   document.body.appendChild(root);
   try {
+    // Wait only after the export surface is in the document, so faces it alone uses are loaded too.
+    await document.fonts.ready;
     const canvas = await window.html2canvas(root, { scale: 2, backgroundColor: "#FFFFFF", logging: false });
     return await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/png"));
   } finally {
@@ -120,6 +123,7 @@ async function startExport() {
   try {
     if (typeof window.html2canvas !== "function") throw new Error("html2canvas not loaded");
     const blob = await exportPng();
+    returnTo = '[data-action="export"]';
     state.preview = { blob, url: URL.createObjectURL(blob) };
   } catch (e) {
     console.error("export", e);
@@ -134,6 +138,7 @@ function closePreview() {
   if (state.preview) URL.revokeObjectURL(state.preview.url);
   state.preview = null;
   render();
+  restoreFocus();
 }
 
 async function savePng() {
@@ -405,7 +410,28 @@ function confirmView() {
   </div>`;
 }
 
+// Where focus goes back to when the top layer (picker, preview, confirm) closes.
+let returnTo = null;
+
+function rememberOpener() {
+  const el = document.activeElement;
+  returnTo = el?.id ? `#${CSS.escape(el.id)}` : el?.dataset?.action ? `[data-action="${el.dataset.action}"]` : null;
+}
+
+function restoreFocus() {
+  const sel = returnTo;
+  returnTo = null;
+  if (sel) document.querySelector(sel)?.focus();
+}
+
+function topLayer() {
+  return app.querySelector('[role="alertdialog"]') || app.querySelector(".dialog") || app.querySelector(".sheet");
+}
+
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, [href], [tabindex]:not([tabindex="-1"])';
+
 function askConfirm(opts) {
+  rememberOpener();
   state.confirm = opts;
   render();
   document.querySelector('[data-action="confirm-ok"]')?.focus();
@@ -462,11 +488,35 @@ app.addEventListener("change", (ev) => {
   else updateEditing({ [f]: ev.target.value.trim() });
 });
 
+function closePicker() {
+  state.picker = null;
+  render();
+  restoreFocus();
+}
+
+function closeConfirm() {
+  state.confirm = null;
+  render();
+  restoreFocus();
+}
+
 document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Tab") {
+    const layer = topLayer();
+    if (!layer) return;
+    const items = [...layer.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items.at(-1);
+    const inside = layer.contains(document.activeElement);
+    if (ev.shiftKey && (!inside || document.activeElement === first)) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && (!inside || document.activeElement === last)) { ev.preventDefault(); first.focus(); }
+    return;
+  }
   if (ev.key !== "Escape") return;
-  if (state.confirm) { state.confirm = null; render(); }
+  if (state.confirm) closeConfirm();
   else if (state.preview) closePreview();
-  else if (state.picker) { state.picker = null; render(); }
+  else if (state.picker) closePicker();
   else if (state.editingId) closeEditor();
 });
 
@@ -483,8 +533,8 @@ app.addEventListener("click", (ev) => {
   else if (a === "edit") openEditor(el.dataset.classId);
   else if (a === "retry") retryAll();
   else if (a === "close-editor") closeEditor();
-  else if (a === "open-picker") { state.picker = { query: "" }; render(); document.getElementById("picker-q")?.focus(); }
-  else if (a === "close-picker") { state.picker = null; render(); }
+  else if (a === "open-picker") { rememberOpener(); state.picker = { query: "" }; render(); document.getElementById("picker-q")?.focus(); }
+  else if (a === "close-picker") closePicker();
   else if (a === "pick") { const c = editing(); updateEditing({ term2TopicIds: L.addTopic(c.term2TopicIds, el.dataset.topic) }); }
   else if (a === "create-topic") createTopic(state.picker.query.trim());
   else if (a === "t2-move") { const c = editing(); updateEditing({ term2TopicIds: L.moveTopic(c.term2TopicIds, +el.dataset.index, +el.dataset.delta) }); }
@@ -494,8 +544,8 @@ app.addEventListener("click", (ev) => {
   else if (a === "delete-class") {
     const id = state.editingId;
     askConfirm({ title: "ลบห้องนี้?", text: "ข้อมูลเทอม 1 และเทอม 2 ของห้องนี้จะหายไป", ok: "ลบ", danger: true, run: () => deleteClass(id) });
-  } else if (a === "confirm-cancel") { state.confirm = null; render(); }
-  else if (a === "confirm-ok") { const k = state.confirm; state.confirm = null; render(); k?.run(); }
+  } else if (a === "confirm-cancel") closeConfirm();
+  else if (a === "confirm-ok") { const k = state.confirm; closeConfirm(); k?.run(); }
 });
 
 const isField = (el) => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
@@ -532,22 +582,33 @@ function markLoaded(key) {
   render();
 }
 
+// Snapshot error callbacks only receive terminal errors: the listener is dead, so say so instead of showing stale data.
+function lostConnection(label, e) {
+  console.error(label, e);
+  state.status = "error";
+  render();
+}
+
 async function boot() {
   render();
   window.claude?.use?.("downloads").then((d) => { downloads = d ?? null; render(); }, () => {});
-  db = (await window.claude?.use?.("db")) ?? null;
+  try {
+    db = (await window.claude?.use?.("db")) ?? null;
+  } catch (e) {
+    return lostConnection("db", e);
+  }
   if (!db) {
     state.status = "nodb";
     return render();
   }
   db.collection("classes").onSnapshot(
     (snap) => {
-      const stored = snap.docs.map((d) => d.data()).filter((c) => !pendingDeletes.has(c.id));
+      const stored = snap.docs.map((d) => L.normalizeClass({ id: d.id, ...d.data() })).filter((c) => !pendingDeletes.has(c.id));
       const ids = new Set(stored.map((c) => c.id));
       state.classes = [...stored.map((c) => unsaved.get(c.id) ?? c), ...[...unsaved.values()].filter((c) => !ids.has(c.id))];
       markLoaded("classes");
     },
-    (e) => console.error("classes", e),
+    (e) => lostConnection("classes", e),
   );
   db.collection("topics").onSnapshot(
     (snap) => {
@@ -556,14 +617,14 @@ async function boot() {
       state.topics = [...stored, ...[...pendingTopics.values()].filter((t) => !ids.has(t.id))];
       markLoaded("topics");
     },
-    (e) => console.error("topics", e),
+    (e) => lostConnection("topics", e),
   );
   db.doc("meta/config").onSnapshot(
     (snap) => {
       state.sequences = snap.exists ? snap.data().sequences ?? {} : {};
       markLoaded("config");
     },
-    (e) => console.error("config", e),
+    (e) => lostConnection("config", e),
   );
 }
 

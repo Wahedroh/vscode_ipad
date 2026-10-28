@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   topicName, groupByTeacher, filterClasses, term1Rows, pickerGroups,
-  addTopic, moveTopic, removeTopicAt, slugifyTopic,
+  addTopic, moveTopic, removeTopicAt, slugifyTopic, normalizeClass,
 } from "../logic.js";
 
 const deepFreeze = (o) => {
@@ -104,4 +104,15 @@ test("slugifyTopic avoids collisions", () => {
     assert.equal(taken.has(b), false);
     taken.add(b);
   }
+});
+
+test("normalizeClass fills missing fields so render never crashes", () => {
+  const c = normalizeClass(deepFreeze({ id: "c9", school: "บ้านตาล", term1End: { topicId: "a" }, term2TopicIds: "oops" }));
+  assert.deepEqual(c, {
+    id: "c9", teacher: "", school: "บ้านตาล", room: "", grade: "ม.1", courseType: "เพิ่มเติม",
+    term1End: { topicId: "a", status: "done", note: "" }, term2TopicIds: [], needsReview: false, updatedAt: 0,
+  });
+  assert.equal(normalizeClass({ id: "x", courseType: "แปลก" }).courseType, "เพิ่มเติม");
+  assert.equal(normalizeClass({ id: "x", term1End: { status: "partial" } }).term1End.status, "partial");
+  assert.deepEqual(normalizeClass({ id: "x", term2TopicIds: ["a", 3, "b"] }).term2TopicIds, ["a", "b"]);
 });
