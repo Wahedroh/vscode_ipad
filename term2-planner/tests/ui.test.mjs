@@ -106,3 +106,58 @@ test("failed save keeps edit and retry succeeds", async () => {
   await page.getByRole("alert").waitFor({ state: "detached" });
   await page.close();
 });
+
+const stored = (page, id) => page.evaluate((id) => window.__mock.docs.get("classes/" + id), id);
+
+async function openClass(page, id) {
+  await page.locator(`[data-class-id="${id}"]`).click();
+  await page.getByRole("dialog").waitFor();
+}
+
+test("edit teacher persists", async () => {
+  const page = await openPage();
+  await openClass(page, "c03");
+  const input = page.getByLabel("ครู", { exact: true });
+  await input.fill("ฮากีม มะแซ");
+  await input.press("Tab");
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c03").teacher === "ฮากีม มะแซ");
+  await page.getByRole("button", { name: "ปิด" }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  await page.close();
+});
+
+test("typing survives a background snapshot", async () => {
+  const page = await openPage();
+  await openClass(page, "c03");
+  const input = page.getByLabel("หมายเหตุ");
+  await input.fill("กำลังพิมพ์");
+  await page.evaluate(() => window.__mock.docs.set("topics/x", { id: "x", name: "x", details: [] }));
+  await page.evaluate(() => window.claude.use("db").then((db) => db.doc("topics/y").set({ id: "y", name: "y", details: [] })));
+  await page.waitForTimeout(100);
+  assert.equal(await page.getByLabel("หมายเหตุ").inputValue(), "กำลังพิมพ์");
+  await page.close();
+});
+
+test("set term1 end partial with note", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByRole("button", { name: /รูปเรขา 2 และ 3 มิติ/ }).click();
+  await page.getByRole("button", { name: "ยังไม่จบ", exact: true }).click();
+  const note = page.getByLabel("หมายเหตุ");
+  await note.fill("ถึงปริซึม");
+  await note.press("Tab");
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term1End.note === "ถึงปริซึม");
+  assert.deepEqual((await stored(page, "c01")).term1End, { topicId: "geometry-2d-3d", status: "partial", note: "ถึงปริซึม" });
+  await page.getByRole("button", { name: /สมการ \(1\)/ }).getByText("สอนแล้ว").waitFor();
+  await page.close();
+});
+
+test("delete class after confirm", async () => {
+  const page = await openPage();
+  await openClass(page, "c05");
+  await page.getByRole("button", { name: "ลบห้องนี้" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "ลบ", exact: true }).click();
+  await page.waitForFunction(() => !window.__mock.docs.has("classes/c05"));
+  await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 25);
+  await page.close();
+});

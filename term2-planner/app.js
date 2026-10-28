@@ -9,6 +9,7 @@ const state = {
   view: "list",
   filter: "all",
   editingId: null,
+  confirm: null, // {title, text, ok, run}
   saveError: null,
 };
 
@@ -45,8 +46,8 @@ function body() {
 const FILTERS = [["all", "ทั้งหมด"], ["review", "ต้องตรวจ"], ...L.COURSE_TYPES.map((t) => [t, t])];
 const ICON_PLUS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
 
-function saveAlert() {
-  if (!state.saveError) return "";
+function saveAlert(inEditor = false) {
+  if (!state.saveError || Boolean(editing()) !== inEditor) return "";
   return `<div class="alert" role="alert"><span>บันทึกไม่สำเร็จ การแก้ไขยังอยู่ในหน้านี้ ลองบันทึกอีกครั้ง</span>
     <button class="btn" data-action="retry">ลองใหม่</button></div>`;
 }
@@ -134,7 +135,119 @@ function addClass() {
 function openEditor(id) {
   state.editingId = id;
   render();
+  document.getElementById("editor-close")?.focus();
 }
+
+function closeEditor() {
+  const id = state.editingId;
+  state.editingId = null;
+  render();
+  document.querySelector(`[data-class-id="${CSS.escape(id ?? "")}"]`)?.focus();
+}
+
+const editing = () => state.classes.find((c) => c.id === state.editingId);
+const ICON_X = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+const ICON_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>`;
+const STATE_LABEL = { done: "สอนแล้ว", end: "จบที่นี่", partial: "จบกลางเรื่อง", untaught: "ยังไม่ได้สอน" };
+
+function infoSection(c) {
+  const teachers = [...new Set(state.classes.map((x) => x.teacher.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th"));
+  const types = L.COURSE_TYPES.map((t) => `<option ${t === c.courseType ? "selected" : ""}>${t}</option>`).join("");
+  return `<section class="section"><h3>ข้อมูลห้อง</h3>
+    <div class="field"><label for="f-teacher">ครู</label>
+      <input class="input" id="f-teacher" list="teacher-list" data-field="teacher" value="${esc(c.teacher)}" autocomplete="off" placeholder="พิมพ์หรือเลือกชื่อครู">
+      <datalist id="teacher-list">${teachers.map((t) => `<option value="${esc(t)}"></option>`).join("")}</datalist></div>
+    <div class="grid2">
+      <div class="field"><label for="f-school">โรงเรียน</label><input class="input" id="f-school" data-field="school" value="${esc(c.school)}"></div>
+      <div class="field"><label for="f-room">ห้อง</label><input class="input" id="f-room" data-field="room" value="${esc(c.room)}"></div>
+    </div>
+    <div class="field"><label for="f-type">ประเภทวิชา</label><select class="input" id="f-type" data-field="courseType">${types}</select></div>
+    <label class="switch"><input type="checkbox" id="f-review" data-field="needsReview" ${c.needsReview ? "checked" : ""}> ต้องตรวจ (ยังไม่แน่ใจข้อมูลห้องนี้)</label>
+  </section>`;
+}
+
+function term1Section(c) {
+  const byId = topicsById();
+  const seq = state.sequences[c.courseType]?.["1"] ?? [];
+  const rows = L.term1Rows(seq, c.term1End);
+  const steps = rows
+    .map(
+      (r) => `<li><button class="step" data-action="term1-topic" data-topic="${esc(r.topicId)}" data-state="${r.state}" aria-pressed="${r.topicId === c.term1End.topicId}">
+        <span class="mark">${r.state === "done" || r.state === "end" ? ICON_CHECK : ""}</span>
+        <span>${esc(L.topicName(byId, r.topicId))}</span><span class="state">${STATE_LABEL[r.state]}</span></button></li>`,
+    )
+    .join("");
+  const seg = (v, label) => `<button data-action="term1-status" data-status="${v}" aria-pressed="${c.term1End.status === v}">${label}</button>`;
+  return `<section class="section"><h3>จบเทอม 1 ที่</h3>
+    <p class="muted small">แตะเรื่องสุดท้ายที่ห้องนี้สอนถึง</p>
+    <ol class="steps">${steps || `<li class="empty">ยังไม่มีลำดับเนื้อหาเทอม 1 ของวิชา${esc(c.courseType)}</li>`}</ol>
+    <div class="seg" role="group" aria-label="สถานะเรื่องสุดท้าย">${seg("done", "จบแล้ว")}${seg("partial", "ยังไม่จบ")}</div>
+    <div class="field"><label for="f-note">หมายเหตุ</label><input class="input" id="f-note" data-field="note" value="${esc(c.term1End.note)}" placeholder="เช่น ถึงหารพหุนาม"></div>
+  </section>`;
+}
+
+function editorView() {
+  const c = editing();
+  if (!c) return "";
+  return `<div class="sheet-backdrop" data-action="close-editor"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+    <div class="sheet-head"><div><h2 id="editor-title">${esc(c.school || "ห้องใหม่")} · ${esc(c.room)}</h2><p class="muted small" style="margin:0">${esc(c.teacher || "ยังไม่ระบุครู")}</p></div>
+      <button class="btn icon-btn" id="editor-close" data-action="close-editor" aria-label="ปิด">${ICON_X}</button></div>
+    ${saveAlert(true)}${infoSection(c)}${term1Section(c)}${typeof term2Section === "function" ? term2Section(c) : ""}
+    <section class="section"><button class="btn danger" data-action="delete-class">ลบห้องนี้</button></section>
+  </div>`;
+}
+
+function confirmView() {
+  const k = state.confirm;
+  if (!k) return "";
+  return `<div class="dialog-backdrop" data-action="confirm-cancel"></div>
+  <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">${esc(k.title)}</h2><p class="muted" style="margin:0">${esc(k.text)}</p>
+    <div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="confirm-cancel">ยกเลิก</button>
+      <button class="btn ${k.danger ? "danger" : "primary"}" data-action="confirm-ok">${esc(k.ok)}</button></div>
+  </div>`;
+}
+
+function askConfirm(opts) {
+  state.confirm = opts;
+  render();
+  document.querySelector('[data-action="confirm-ok"]')?.focus();
+}
+
+async function deleteClass(id) {
+  state.editingId = null;
+  unsaved.delete(id);
+  state.classes = state.classes.filter((c) => c.id !== id);
+  render();
+  try {
+    await db.doc("classes/" + id).delete();
+  } catch (e) {
+    console.error("delete", e);
+    state.saveError = { retry: () => deleteClass(id) };
+    render();
+  }
+}
+
+function updateEditing(patch) {
+  const c = editing();
+  if (c) saveClass({ ...c, ...patch });
+}
+
+app.addEventListener("change", (ev) => {
+  const f = ev.target.dataset?.field;
+  const c = editing();
+  if (!f || !c) return;
+  if (f === "needsReview") updateEditing({ needsReview: ev.target.checked });
+  else if (f === "note") updateEditing({ term1End: { ...c.term1End, note: ev.target.value.trim() } });
+  else updateEditing({ [f]: ev.target.value.trim() });
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (state.confirm) { state.confirm = null; render(); }
+  else if (state.editingId) closeEditor();
+});
 
 app.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-action]");
@@ -145,10 +258,31 @@ app.addEventListener("click", (ev) => {
   else if (a === "add-class") addClass();
   else if (a === "edit") openEditor(el.dataset.classId);
   else if (a === "retry") state.saveError?.retry();
+  else if (a === "close-editor") closeEditor();
+  else if (a === "term1-topic") { const c = editing(); updateEditing({ term1End: { ...c.term1End, topicId: el.dataset.topic } }); }
+  else if (a === "term1-status") { const c = editing(); updateEditing({ term1End: { ...c.term1End, status: el.dataset.status } }); }
+  else if (a === "delete-class") {
+    const id = state.editingId;
+    askConfirm({ title: "ลบห้องนี้?", text: "ข้อมูลเทอม 1 และเทอม 2 ของห้องนี้จะหายไป", ok: "ลบ", danger: true, run: () => deleteClass(id) });
+  } else if (a === "confirm-cancel") { state.confirm = null; render(); }
+  else if (a === "confirm-ok") { const k = state.confirm; state.confirm = null; render(); k?.run(); }
 });
 
 function render() {
-  app.innerHTML = header() + body();
+  // Keep whatever the user is typing (and the caret) across a full re-render.
+  const active = document.activeElement;
+  const keep = active?.id && app.contains(active) && "value" in active
+    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
+    : null;
+  app.innerHTML = header() + body() + editorView() + confirmView();
+  if (keep) {
+    const el = document.getElementById(keep.id);
+    if (el) {
+      el.value = keep.value;
+      el.focus();
+      try { el.setSelectionRange(keep.start, keep.end); } catch {}
+    }
+  }
 }
 
 function markLoaded(key) {
