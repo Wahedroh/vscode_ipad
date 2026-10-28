@@ -1,0 +1,698 @@
+{
+ "topics": [
+  {
+   "id": "integers",
+   "name": "จำนวนเต็ม",
+   "details": [
+    "เปรียบเทียบจำนวนเต็ม",
+    "บวกลบคูณหารจำนวนเต็ม"
+   ]
+  },
+  {
+   "id": "decimals",
+   "name": "ทศนิยม",
+   "details": []
+  },
+  {
+   "id": "fractions",
+   "name": "เศษส่วน",
+   "details": []
+  },
+  {
+   "id": "exponents-1",
+   "name": "เลขยกกำลัง (1)",
+   "details": [
+    "เลขยกกำลังแบบ ม.1 แบบพื้นฐาน",
+    "และสัญกรณ์วิทยาศาสตร์"
+   ]
+  },
+  {
+   "id": "exponents-2",
+   "name": "เลขยกกำลัง (2)",
+   "details": [
+    "ทบทวนสมบัติเลขยกกำลัง",
+    "เปรียบเทียบเลขยกกำลัง",
+    "โจทย์แนวแยกฐาน ยกกำลังติดตัวแปร ต่างๆ",
+    "สมการเลขยกกำลัง"
+   ]
+  },
+  {
+   "id": "counting-numbers",
+   "name": "จำนวนนับ",
+   "details": [
+    "จำนวนเฉพาะ แยกตัวประกอบของจำนวนเป็นจำนวนเฉพาะคูณกัน",
+    "หรม ครน หา ประยุกต์ หรม ครน ตัวประกอบของจำนวนนับ",
+    "หาจำนวนตัวประกอบทั้งหมดของจำนวนนับ"
+   ]
+  },
+  {
+   "id": "polynomials-1",
+   "name": "พหุนาม (1)",
+   "details": [
+    "บวกลบคูณหารเอกนาม พหุนาม"
+   ]
+  },
+  {
+   "id": "polynomials-2",
+   "name": "พหุนาม (2)",
+   "details": [
+    "แยกตัวประกอบพหุนาม",
+    "ดึงตัวร่วม",
+    "ผลต่างกำลังสอง",
+    "กำลังสองสมบูรณ์",
+    "แยก 2 วงเล็บ",
+    "เศษส่วนพหุนาม"
+   ]
+  },
+  {
+   "id": "polynomials-3",
+   "name": "พหุนาม (3)",
+   "details": [
+    "แยกตัวประกอบพหุนามดีกรีสูง 3, 4 หรือสูงกว่า",
+    "สูตรกำลังสามสมบูรณ์ ผลบวกผลคูณกำลังสาม และอื่นๆ",
+    "โจทย์ประยุกต์จัดรูปพหุนาม",
+    "หารสังเคราะห์และทฤษฎีเศษเหลือ"
+   ]
+  },
+  {
+   "id": "equations-1",
+   "name": "สมการ (1)",
+   "details": [
+    "แก้สมการตัวแปรเดียวหาค่า x"
+   ]
+  },
+  {
+   "id": "equations-2",
+   "name": "สมการ (2)",
+   "details": [
+    "สมการตัวแปรเดียวใส่โจทย์ซับซ้อนหน่อย",
+    "และโจทย์ปัญหาสมการตัวแปรเดียว"
+   ]
+  },
+  {
+   "id": "geometry-2d-3d",
+   "name": "รูปเรขา 2 และ 3 มิติ",
+   "details": []
+  },
+  {
+   "id": "compass-construction",
+   "name": "การสร้างด้วยวงเวียนและสันตรง",
+   "details": []
+  },
+  {
+   "id": "applications-1",
+   "name": "ประยุกต์ (1)",
+   "details": []
+  },
+  {
+   "id": "ratio-percent",
+   "name": "อัตราส่วน สัดส่วนร้อยละ",
+   "details": []
+  },
+  {
+   "id": "linear-word-problems",
+   "name": "โจทย์ปัญหาสมการตัวแปรเดียว",
+   "details": []
+  },
+  {
+   "id": "roots-1",
+   "name": "รูท (1)",
+   "details": [
+    "นิยาม ถอดรูท",
+    "บวกลบคูณหารรูท",
+    "จัดการรูทเบื้องต้น",
+    "กระจายวงเล็บต่างๆ"
+   ]
+  },
+  {
+   "id": "roots-2",
+   "name": "รูท (2)",
+   "details": [
+    "เรียนแบบ ม.5 เชื่อมโยงรูทกับเลขยกกำลังแบบติดเศษส่วน",
+    "รูทยากๆ รูทซับซ้อน รูทติดตัวแปร สมการรูท"
+   ]
+  },
+  {
+   "id": "two-variable-equations",
+   "name": "สมการสองตัวแปร",
+   "details": []
+  },
+  {
+   "id": "two-variable-word-problems",
+   "name": "โจทย์ปัญหาสมการสองตัวแปร",
+   "details": []
+  },
+  {
+   "id": "quadratic-equations",
+   "name": "สมการกำลังสอง",
+   "details": [
+    "แก้สมการกำลังสองทั่วไปหาค่า x ทั้งแบบแยกตัวประกอบ และใช้สูตร"
+   ]
+  },
+  {
+   "id": "quadratic-equations-2",
+   "name": "สมการกำลังสอง (2)",
+   "details": [
+    "ทบทวนสมการกำลังสอง",
+    "สูตรผลบวกผลคูณรากสมการ",
+    "โจทย์ปัญหาสมการกำลังสอง",
+    "โจทย์อื่นๆ ที่ประยุกต์กับสมการกำลังสองได้ (ถ้ามี)"
+   ]
+  },
+  {
+   "id": "quadratic-word-problems",
+   "name": "โจทย์ปัญหาสมการกำลังสอง",
+   "details": []
+  },
+  {
+   "id": "linear-graphs",
+   "name": "กราฟและความสัมพันธ์เชิงเส้น",
+   "details": []
+  }
+ ],
+ "sequences": {
+  "พื้นฐาน": {
+   "1": [
+    "integers",
+    "decimals",
+    "fractions",
+    "exponents-1"
+   ],
+   "2": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ]
+  },
+  "เพิ่มเติม": {
+   "1": [
+    "counting-numbers",
+    "polynomials-1",
+    "equations-1",
+    "geometry-2d-3d",
+    "compass-construction"
+   ],
+   "2": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ]
+  },
+  "เข้มข้น": {
+   "1": [
+    "polynomials-1",
+    "equations-1",
+    "applications-1"
+   ],
+   "2": [
+    "linear-word-problems",
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems",
+    "polynomials-3",
+    "roots-1"
+   ]
+  }
+ },
+ "classes": [
+  {
+   "teacher": "นิราซฟัน มะแซ",
+   "school": "บ้านตาล",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "ฟุรกอน",
+   "school": "จรว.",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "ฟุรกอน",
+   "school": "พีระยา",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ฮากีม มะแซ",
+   "school": "พว (พัฒนา)",
+   "room": "ม.1/2",
+   "courseType": "เข้มข้น",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "linear-word-problems",
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems",
+    "polynomials-3",
+    "roots-1"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ซัฟวาน มะแซ",
+   "school": "ดฟก",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "ซัฟวาน มะแซ",
+   "school": "ดรุณศาสน์",
+   "room": "ม.1/7",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นบีละห์",
+   "school": "ดรุณศาสน์",
+   "room": "ม.1/8",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "นบีละห์",
+   "school": "พีระยา",
+   "room": "ม.1/5",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "partial",
+    "note": "ได้แค่บวกลบพหุนาม"
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ตอฮาร",
+   "school": "อุดมศาสน์",
+   "room": "ม.1/6",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "partial",
+    "note": "ได้แค่บวกลบพหุนาม"
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ตอฮาร",
+   "school": "พว (พัฒนา)",
+   "room": "ม.1/1",
+   "courseType": "เข้มข้น",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "linear-word-problems",
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems",
+    "polynomials-3",
+    "roots-1"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ตอฮาร",
+   "school": "พว (พัฒนา)",
+   "room": "ม.1/3",
+   "courseType": "เข้มข้น",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "linear-word-problems",
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems",
+    "polynomials-3",
+    "roots-1"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ตอฮาร",
+   "school": "ประสานวิทยา",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "อิซซะห์",
+   "school": "จรว.",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "อิซซะห์",
+   "school": "Change Plus",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "exponents-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "อิซซะห์",
+   "school": "ประทีป",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "partial",
+    "note": "ถึงการบวก การลบพหุนาม"
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "ซัลวา",
+   "school": "ตาร์เบีย",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "equations-1",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": false
+  },
+  {
+   "teacher": "ซัลวา",
+   "school": "ดรุณ",
+   "room": "ม.1/7",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "partial",
+    "note": "จบบวกลบเศษส่วน"
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "อับดุลวาเหตุ",
+   "school": "คัมภีร์",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "done",
+    "note": "ถึงพหุนามหารพหุนาม"
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "อับดุลวาเหตุ",
+   "school": "บำรุง",
+   "room": "ม.1",
+   "courseType": "เพิ่มเติม",
+   "term1End": {
+    "topicId": "polynomials-1",
+    "status": "done",
+    "note": "ถึงพหุนามหารพหุนาม"
+   },
+   "term2TopicIds": [
+    "ratio-percent",
+    "linear-word-problems",
+    "roots-1",
+    "two-variable-equations",
+    "two-variable-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "อับดุลวาเหตุ",
+   "school": "พีระยา",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": "กำลังเข้าเลขยกกำลัง"
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "คัมภีร์",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "ตาร์เบีย",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "บำรุง",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "ประสาน",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "ดรุณ",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "fractions",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  },
+  {
+   "teacher": "นิอิมรอน",
+   "school": "ประทีป",
+   "room": "ม.1",
+   "courseType": "พื้นฐาน",
+   "term1End": {
+    "topicId": "decimals",
+    "status": "done",
+    "note": ""
+   },
+   "term2TopicIds": [
+    "polynomials-2",
+    "quadratic-equations",
+    "quadratic-word-problems"
+   ],
+   "needsReview": true
+  }
+ ]
+}
