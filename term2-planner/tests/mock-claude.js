@@ -4,7 +4,7 @@
   const init = window.__mockInit || {};
   const docs = new Map();
   for (const o of init.ops || []) docs.set(o.path, structuredClone(o.data));
-  const mock = { docs, failNextWrite: false, saved: [], writes: 0 };
+  const mock = { docs, failNextWrite: false, failWrites: 0, saved: [], writes: 0 };
   window.__mock = mock;
 
   const listeners = new Set();
@@ -22,6 +22,7 @@
   const listen = (fire) => { const l = { fire }; listeners.add(l); setTimeout(fire, 0); return () => listeners.delete(l); };
   const write = async (fn) => {
     await new Promise((r) => setTimeout(r, 5));
+    if (mock.failWrites > 0) { mock.failWrites--; throw { code: "unavailable", message: "mock failure" }; }
     if (mock.failNextWrite) { mock.failNextWrite = false; throw { code: "unavailable", message: "mock failure" }; }
     mock.writes++;
     fn();

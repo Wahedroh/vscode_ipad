@@ -14,6 +14,12 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 // html2canvas is loaded from cdnjs in production; tests serve the same npm release locally.
 const vendorDir = fileURLToPath(new URL("./vendor/", import.meta.url));
 const html2canvasPath = join(vendorDir, "package/dist/html2canvas.min.js");
+const morphdomPath = join(vendorDir, "morphdom/package/dist/morphdom-umd.min.js");
+if (!existsSync(morphdomPath)) {
+  mkdirSync(join(vendorDir, "morphdom"), { recursive: true });
+  execFileSync("npm", ["pack", "morphdom@2.7.4", "--silent", "--pack-destination", vendorDir]);
+  execFileSync("tar", ["-xzf", join(vendorDir, "morphdom-2.7.4.tgz"), "-C", join(vendorDir, "morphdom")]);
+}
 if (!existsSync(html2canvasPath)) {
   mkdirSync(vendorDir, { recursive: true });
   execFileSync("npm", ["pack", "html2canvas@1.4.1", "--silent", "--pack-destination", vendorDir]);
@@ -45,6 +51,7 @@ after(async () => { await browser.close(); server.close(); });
 export async function openPage({ seed: withSeed = true, width = 390, init = {}, prepare } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 } });
   page.setDefaultTimeout(5000);
+  await page.route("**/morphdom-umd.min.js", (r) => r.fulfill({ path: morphdomPath, contentType: "text/javascript" }));
   await page.route("**/html2canvas.min.js", (r) => r.fulfill({ path: html2canvasPath, contentType: "text/javascript" }));
   const ops = withSeed ? toBatchOps(prepare ? prepare(structuredClone(seed)) : seed, 1) : [];
   await page.addInitScript({ content: `window.__mockInit = ${JSON.stringify({ ops, ...init })};` });
@@ -301,5 +308,48 @@ test("download button hidden when downloads unavailable", async () => {
   const dlg = page.getByRole("dialog", { name: "ภาพสรุปเทอม 2" });
   await dlg.locator("img").waitFor();
   assert.equal(await dlg.getByRole("button", { name: "ดาวน์โหลด" }).count(), 0);
+  await page.close();
+});
+
+test("retry after offline topic creation saves both class and topic", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.evaluate(() => { window.__mock.failWrites = 2; });
+  const picker = await openPicker(page);
+  await picker.getByLabel("ค้นหาเรื่อง").fill("สถิติ");
+  await picker.getByRole("button", { name: 'เพิ่ม "สถิติ" เป็นเรื่องใหม่' }).click();
+  await page.getByRole("alert").getByText("บันทึกไม่สำเร็จ").waitFor();
+  await page.getByRole("button", { name: "ปิดหน้าเลือกเรื่อง" }).click();
+  await page.getByRole("button", { name: "ลองใหม่" }).click();
+  await page.getByRole("alert").waitFor({ state: "detached" });
+  const ids = (await stored(page, "c01")).term2TopicIds;
+  assert.equal(ids.length, 6);
+  assert.equal(await page.evaluate((id) => window.__mock.docs.get("topics/" + id)?.name, ids.at(-1)), "สถิติ");
+  await page.close();
+});
+
+test("tap after editing a field lands on its target", async () => {
+  const page = await openPage();
+  await openClass(page, "c03");
+  await page.getByLabel("ครู", { exact: true }).fill("ฮากีม มะแซ");
+  await page.getByLabel("โรงเรียน").click();
+  assert.equal(await page.evaluate(() => document.activeElement.id), "f-school");
+  await page.getByLabel("โรงเรียน").fill("พีระยา 2");
+  await page.getByRole("button", { name: "เพิ่มเรื่อง" }).click();
+  await page.getByRole("dialog", { name: "เลือกเรื่อง" }).waitFor({ timeout: 1000 });
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c03").school === "พีระยา 2");
+  await page.close();
+});
+
+test("editor keeps scroll position after removing a topic", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByRole("button", { name: "เอาออก: รูท (1)" }).scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => document.querySelector(".sheet").scrollTop);
+  assert.ok(before > 100, String(before));
+  await page.getByRole("button", { name: "เอาออก: รูท (1)" }).click();
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term2TopicIds.length === 4);
+  const after = await page.evaluate(() => document.querySelector(".sheet").scrollTop);
+  assert.ok(after > 100, String(after));
   await page.close();
 });

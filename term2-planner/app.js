@@ -14,11 +14,32 @@ const state = {
   exporting: false,
   preview: null, // {url, blob}
   notice: "",
-  saveError: null,
+  saveFailed: false,
 };
 
 // Edits not yet confirmed by the store; overlaid on every snapshot so a failed save never drops them.
 const unsaved = new Map();
+// Topics and deletions not yet confirmed by the store; one retry replays all pending work.
+const pendingTopics = new Map();
+const pendingDeletes = new Set();
+const hasPending = () => unsaved.size + pendingTopics.size + pendingDeletes.size > 0;
+
+function failed(label, e) {
+  console.error(label, e);
+  state.saveFailed = true;
+  render();
+}
+
+function settled() {
+  if (!hasPending()) state.saveFailed = false;
+  render();
+}
+
+function retryAll() {
+  for (const c of [...unsaved.values()]) saveClass(c);
+  for (const t of [...pendingTopics.values()]) saveTopic(t);
+  for (const id of [...pendingDeletes]) deleteClass(id);
+}
 // Per-document write queue: one write in flight per class, latest value wins.
 const queues = new Map();
 
@@ -143,7 +164,7 @@ const FILTERS = [["all", "ทั้งหมด"], ["review", "ต้องต�
 const ICON_PLUS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
 
 function saveAlert(inEditor = false) {
-  if (!state.saveError || Boolean(editing()) !== inEditor) return "";
+  if (!state.saveFailed || !hasPending() || Boolean(editing()) !== inEditor) return "";
   return `<div class="alert" role="alert"><span>บันทึกไม่สำเร็จ การแก้ไขยังอยู่ในหน้านี้ ลองบันทึกอีกครั้ง</span>
     <button class="btn" data-action="retry">ลองใหม่</button></div>`;
 }
@@ -185,6 +206,7 @@ function upsertLocal(cls) {
 }
 
 async function saveClass(cls) {
+  if (pendingDeletes.has(cls.id)) return;
   const rec = { ...cls, updatedAt: Date.now() };
   unsaved.set(rec.id, rec);
   upsertLocal(rec);
@@ -198,17 +220,16 @@ async function saveClass(cls) {
     while (q.next) {
       const r = q.next;
       q.next = null;
+      if (pendingDeletes.has(r.id)) break;
       await db.doc("classes/" + r.id).set(r);
       if (unsaved.get(r.id) === r) unsaved.delete(r.id);
     }
-    if (unsaved.size === 0) state.saveError = null;
-  } catch (e) {
-    console.error("save", e);
-    q.next = null;
-    state.saveError = { retry: () => Promise.all([...unsaved.values()].map(saveClass)) };
-  } finally {
     q.running = false;
-    render();
+    settled();
+  } catch (e) {
+    q.next = null;
+    q.running = false;
+    failed("save", e);
   }
 }
 
@@ -341,20 +362,24 @@ function pickerView() {
   </div>`;
 }
 
-async function createTopic(name) {
+async function saveTopic(topic) {
+  pendingTopics.set(topic.id, topic);
+  if (!state.topics.some((t) => t.id === topic.id)) state.topics = [...state.topics, topic];
+  try {
+    await db.doc("topics/" + topic.id).set(topic);
+    pendingTopics.delete(topic.id);
+    settled();
+  } catch (e) {
+    failed("topic", e);
+  }
+}
+
+function createTopic(name) {
   const id = L.slugifyTopic(name, new Set(state.topics.map((t) => t.id)));
-  const topic = { id, name, details: [] };
-  state.topics = [...state.topics, topic];
   state.picker = { query: "" };
   const c = editing();
+  saveTopic({ id, name, details: [] });
   saveClass({ ...c, term2TopicIds: L.addTopic(c.term2TopicIds, id) });
-  try {
-    await db.doc("topics/" + id).set(topic);
-  } catch (e) {
-    console.error("topic", e);
-    state.saveError = { retry: () => db.doc("topics/" + id).set(topic).then(() => { state.saveError = null; render(); }) };
-    render();
-  }
 }
 
 function editorView() {
@@ -387,16 +412,19 @@ function askConfirm(opts) {
 }
 
 async function deleteClass(id) {
-  state.editingId = null;
+  if (state.editingId === id) state.editingId = null;
+  pendingDeletes.add(id);
   unsaved.delete(id);
+  const q = queues.get(id);
+  if (q) q.next = null;
   state.classes = state.classes.filter((c) => c.id !== id);
   render();
   try {
     await db.doc("classes/" + id).delete();
+    pendingDeletes.delete(id);
+    settled();
   } catch (e) {
-    console.error("delete", e);
-    state.saveError = { retry: () => deleteClass(id) };
-    render();
+    failed("delete", e);
   }
 }
 
@@ -453,7 +481,7 @@ app.addEventListener("click", (ev) => {
   else if (a === "filter") { state.filter = el.dataset.filter; render(); }
   else if (a === "add-class") addClass();
   else if (a === "edit") openEditor(el.dataset.classId);
-  else if (a === "retry") state.saveError?.retry();
+  else if (a === "retry") retryAll();
   else if (a === "close-editor") closeEditor();
   else if (a === "open-picker") { state.picker = { query: "" }; render(); document.getElementById("picker-q")?.focus(); }
   else if (a === "close-picker") { state.picker = null; render(); }
@@ -470,13 +498,24 @@ app.addEventListener("click", (ev) => {
   else if (a === "confirm-ok") { const k = state.confirm; state.confirm = null; render(); k?.run(); }
 });
 
+const isField = (el) => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+
 function render() {
-  // Keep whatever the user is typing (and the caret) across a full re-render.
+  const html = header() + body() + editorView() + pickerView() + previewView() + confirmView();
+  if (window.morphdom) {
+    // Patch the live DOM instead of replacing it: taps, focus, scroll and half-typed text all survive.
+    window.morphdom(app, `<main>${html}</main>`, {
+      childrenOnly: true,
+      onBeforeElUpdated: (from) => !(from === document.activeElement && isField(from)),
+    });
+    return;
+  }
+  // Fallback when the morphdom script is unavailable: full rebuild, keeping the field being typed in.
   const active = document.activeElement;
   const keep = active?.id && app.contains(active) && "value" in active
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
     : null;
-  app.innerHTML = header() + body() + editorView() + pickerView() + previewView() + confirmView();
+  app.innerHTML = html;
   if (keep) {
     const el = document.getElementById(keep.id);
     if (el) {
@@ -503,7 +542,7 @@ async function boot() {
   }
   db.collection("classes").onSnapshot(
     (snap) => {
-      const stored = snap.docs.map((d) => d.data());
+      const stored = snap.docs.map((d) => d.data()).filter((c) => !pendingDeletes.has(c.id));
       const ids = new Set(stored.map((c) => c.id));
       state.classes = [...stored.map((c) => unsaved.get(c.id) ?? c), ...[...unsaved.values()].filter((c) => !ids.has(c.id))];
       markLoaded("classes");
@@ -512,7 +551,9 @@ async function boot() {
   );
   db.collection("topics").onSnapshot(
     (snap) => {
-      state.topics = snap.docs.map((d) => d.data());
+      const stored = snap.docs.map((d) => d.data());
+      const ids = new Set(stored.map((t) => t.id));
+      state.topics = [...stored, ...[...pendingTopics.values()].filter((t) => !ids.has(t.id))];
       markLoaded("topics");
     },
     (e) => console.error("topics", e),
