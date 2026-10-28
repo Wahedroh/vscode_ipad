@@ -1,5 +1,6 @@
 import * as L from "./logic.js";
 import { createSheetsStore, SHEET_URL } from "./sheets-store.js";
+import { esc, summaryTableHtml, exportPng as renderPng } from "./summary.js";
 
 const state = {
   status: "loading", // loading | ready | nodb | error
@@ -51,11 +52,8 @@ const CONFIRM_MS = 60000;
 let store = null;
 let stopWatch = null;
 let downloads = null;
-const EXPORT_TITLE = "เนื้อหาคณิตศาสตร์เทอม 2 ปีการศึกษา 2569";
 const app = document.getElementById("app");
 
-const esc = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const topicsById = () => Object.fromEntries(state.topics.map((t) => [t.id, t]));
 
 const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>`;
@@ -111,23 +109,7 @@ function errorView(code) {
 }
 
 function summaryTable() {
-  const byId = topicsById();
-  const rows = L.groupByTeacher(state.classes)
-    .flatMap((g) =>
-      g.classes.map((c, i) => {
-        const end = L.topicName(byId, c.term1End.topicId);
-        const topics = c.term2TopicIds.map((id, k) => `<span><b>${k + 1}.</b>${esc(L.topicName(byId, id))}</span>`).join("");
-        return `<tr class="${i === 0 ? "first" : ""}">
-          <td class="teacher">${i === 0 ? esc(g.teacher) : ""}</td>
-          <td>${esc(c.school)} · ${esc(c.room)}</td><td>${esc(c.courseType)}</td>
-          <td>${esc(end)}${c.term1End.status === "partial" ? ` <span class="nowrap">(ยังไม่จบ)</span>` : ""}${c.term1End.note ? `<div class="muted small">${esc(c.term1End.note)}</div>` : ""}</td>
-          <td><div class="topics">${topics || `<span class="muted">ยังไม่ได้เลือก</span>`}</div></td></tr>`;
-      }),
-    )
-    .join("");
-  return `<div class="table-wrap"><table class="sum">
-    <thead><tr><th>ครู</th><th>โรงเรียน · ห้อง</th><th>ประเภท</th><th>จบเทอม 1</th><th>เนื้อหาเทอม 2</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>`;
+  return summaryTableHtml(state.classes, topicsById());
 }
 
 function summaryView() {
@@ -139,19 +121,8 @@ function summaryView() {
     ${summaryTable()}`;
 }
 
-async function exportPng() {
-  const root = document.createElement("div");
-  root.id = "export-root";
-  root.innerHTML = `<div class="export-head"><h1>${EXPORT_TITLE}</h1><span>ข้อมูล ณ ${new Date().toLocaleDateString("th-TH", { dateStyle: "long" })}</span></div>${summaryTable()}`;
-  document.body.appendChild(root);
-  try {
-    // Wait only after the export surface is in the document, so faces it alone uses are loaded too.
-    await document.fonts.ready;
-    const canvas = await window.html2canvas(root, { scale: 2, backgroundColor: "#FFFFFF", logging: false });
-    return await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/png"));
-  } finally {
-    root.remove();
-  }
+function exportPng() {
+  return renderPng(state.classes, topicsById());
 }
 
 async function startExport() {
