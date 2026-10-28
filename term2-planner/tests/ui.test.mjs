@@ -161,3 +161,65 @@ test("delete class after confirm", async () => {
   await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 25);
   await page.close();
 });
+
+async function openPicker(page) {
+  await page.getByRole("button", { name: "เพิ่มเรื่อง" }).click();
+  await page.getByRole("dialog", { name: "เลือกเรื่อง" }).waitFor();
+  return page.getByRole("dialog", { name: "เลือกเรื่อง" });
+}
+
+test("add topic from picker", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  const picker = await openPicker(page);
+  await picker.getByRole("button", { name: /^พหุนาม \(3\)/ }).click();
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term2TopicIds.length === 6);
+  assert.equal((await stored(page, "c01")).term2TopicIds.at(-1), "polynomials-3");
+  await picker.getByRole("button", { name: /^พหุนาม \(3\)/ }).waitFor();
+  assert.equal(await picker.getByRole("button", { name: /^พหุนาม \(3\)/ }).isDisabled(), true);
+  await page.close();
+});
+
+test("selected topic is disabled in picker and leftovers listed first", async () => {
+  const page = await openPage();
+  await openClass(page, "c08");
+  const picker = await openPicker(page);
+  assert.equal(await picker.getByRole("button", { name: /^รูท \(1\)/ }).isDisabled(), true);
+  const headings = await picker.getByRole("heading").allTextContents();
+  assert.deepEqual(headings.slice(0, 3), ["เลือกเรื่อง", "เทอม 1 ที่ยังไม่ได้สอน", "เทอม 2 มาตรฐาน (เพิ่มเติม)"]);
+  await page.close();
+});
+
+test("move and remove topic persist order", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByRole("button", { name: "เลื่อนลง: อัตราส่วน สัดส่วนร้อยละ" }).click();
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term2TopicIds[1] === "ratio-percent");
+  assert.equal(await page.getByRole("button", { name: "เลื่อนขึ้น: โจทย์ปัญหาสมการตัวแปรเดียว" }).isDisabled(), true);
+  await page.getByRole("button", { name: "เอาออก: รูท (1)" }).click();
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term2TopicIds.length === 4);
+  assert.deepEqual((await stored(page, "c01")).term2TopicIds, ["linear-word-problems", "ratio-percent", "two-variable-equations", "two-variable-word-problems"]);
+  await page.close();
+});
+
+test("create new topic from search", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  const picker = await openPicker(page);
+  await picker.getByLabel("ค้นหาเรื่อง").fill("สถิติ");
+  await picker.getByRole("button", { name: 'เพิ่ม "สถิติ" เป็นเรื่องใหม่' }).click();
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c01").term2TopicIds.length === 6);
+  const newId = (await stored(page, "c01")).term2TopicIds.at(-1);
+  assert.equal(await page.evaluate((id) => window.__mock.docs.get("topics/" + id)?.name, newId), "สถิติ");
+  await page.close();
+});
+
+test("copy term2 from another class", async () => {
+  const page = await openPage();
+  await openClass(page, "c01");
+  await page.getByLabel("คัดลอกเนื้อหาเทอม 2 จากห้อง").selectOption("c04");
+  await page.getByRole("alertdialog").getByRole("button", { name: "แทนที่", exact: true }).click();
+  await page.waitForFunction(() =>
+    JSON.stringify(window.__mock.docs.get("classes/c01").term2TopicIds) === JSON.stringify(window.__mock.docs.get("classes/c04").term2TopicIds));
+  await page.close();
+});

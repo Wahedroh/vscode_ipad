@@ -10,6 +10,7 @@ const state = {
   filter: "all",
   editingId: null,
   confirm: null, // {title, text, ok, run}
+  picker: null, // {query}
   saveError: null,
 };
 
@@ -186,6 +187,81 @@ function term1Section(c) {
   </section>`;
 }
 
+const ICON_UP = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>`;
+const ICON_DOWN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>`;
+
+function term2Section(c) {
+  const byId = topicsById();
+  const n = c.term2TopicIds.length;
+  const items = c.term2TopicIds
+    .map((id, i) => {
+      const name = esc(L.topicName(byId, id));
+      return `<li><span class="n">${i + 1}.</span><span class="name">${name}</span>
+        <button class="btn icon-btn" data-action="t2-move" data-index="${i}" data-delta="-1" aria-label="เลื่อนขึ้น: ${name}" ${i === 0 ? "disabled" : ""}>${ICON_UP}</button>
+        <button class="btn icon-btn" data-action="t2-move" data-index="${i}" data-delta="1" aria-label="เลื่อนลง: ${name}" ${i === n - 1 ? "disabled" : ""}>${ICON_DOWN}</button>
+        <button class="btn icon-btn" data-action="t2-remove" data-index="${i}" aria-label="เอาออก: ${name}">${ICON_X}</button></li>`;
+    })
+    .join("");
+  const others = state.classes
+    .filter((x) => x.id !== c.id)
+    .sort((a, b) => (a.teacher || "~").localeCompare(b.teacher || "~", "th") || a.school.localeCompare(b.school, "th"))
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.teacher || "ยังไม่ระบุครู")} — ${esc(x.school)} ${esc(x.room)} (${x.term2TopicIds.length} เรื่อง)</option>`)
+    .join("");
+  return `<section class="section"><h3>เนื้อหาเทอม 2</h3>
+    <ol class="order">${items || `<li class="empty">ยังไม่ได้เลือกเรื่อง</li>`}</ol>
+    <button class="btn primary" data-action="open-picker">${ICON_PLUS}เพิ่มเรื่อง</button>
+    <div class="field"><label for="f-copy">คัดลอกเนื้อหาเทอม 2 จากห้อง</label>
+      <select class="input" id="f-copy" data-copy><option value="">เลือกห้อง…</option>${others}</select></div>
+  </section>`;
+}
+
+function pickerView() {
+  const c = editing();
+  if (!state.picker || !c) return "";
+  const q = state.picker.query;
+  const groups = L.pickerGroups(c, state.sequences, state.topics, q);
+  const byId = topicsById();
+  const body = groups
+    .map(
+      (g) => `<div class="pick-group"><h3 class="label">${esc(g.title)}</h3>${g.items
+        .map((it) => {
+          const d = byId[it.id]?.details ?? [];
+          return `<button class="pick" data-action="pick" data-topic="${esc(it.id)}" ${it.selected ? "disabled" : ""}>
+            <span>${esc(it.name)}${it.selected ? ` <span class="muted small">· เลือกแล้ว</span>` : ""}</span>
+            ${d.length ? `<span class="d">${esc(d.join(" · "))}</span>` : ""}</button>`;
+        })
+        .join("")}</div>`,
+    )
+    .join("");
+  const exact = state.topics.some((t) => t.name === q.trim());
+  const create = q.trim() && !exact
+    ? `<button class="btn" data-action="create-topic">${ICON_PLUS}เพิ่ม "${esc(q.trim())}" เป็นเรื่องใหม่</button>`
+    : "";
+  return `<div class="dialog-backdrop" data-action="close-picker"></div>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="sheet-head" style="margin:0"><h2 id="picker-title">เลือกเรื่อง</h2>
+      <button class="btn icon-btn" data-action="close-picker" aria-label="ปิดหน้าเลือกเรื่อง">${ICON_X}</button></div>
+    <div class="field"><label for="picker-q">ค้นหาเรื่อง</label><input class="input" id="picker-q" type="search" value="${esc(q)}" autocomplete="off"></div>
+    <div class="dialog-body">${body || `<p class="empty">ไม่พบเรื่องที่ค้นหา</p>`}${create}</div>
+  </div>`;
+}
+
+async function createTopic(name) {
+  const id = L.slugifyTopic(name, new Set(state.topics.map((t) => t.id)));
+  const topic = { id, name, details: [] };
+  state.topics = [...state.topics, topic];
+  state.picker = { query: "" };
+  const c = editing();
+  saveClass({ ...c, term2TopicIds: L.addTopic(c.term2TopicIds, id) });
+  try {
+    await db.doc("topics/" + id).set(topic);
+  } catch (e) {
+    console.error("topic", e);
+    state.saveError = { retry: () => db.doc("topics/" + id).set(topic).then(() => { state.saveError = null; render(); }) };
+    render();
+  }
+}
+
 function editorView() {
   const c = editing();
   if (!c) return "";
@@ -193,7 +269,7 @@ function editorView() {
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">
     <div class="sheet-head"><div><h2 id="editor-title">${esc(c.school || "ห้องใหม่")} · ${esc(c.room)}</h2><p class="muted small" style="margin:0">${esc(c.teacher || "ยังไม่ระบุครู")}</p></div>
       <button class="btn icon-btn" id="editor-close" data-action="close-editor" aria-label="ปิด">${ICON_X}</button></div>
-    ${saveAlert(true)}${infoSection(c)}${term1Section(c)}${typeof term2Section === "function" ? term2Section(c) : ""}
+    ${saveAlert(true)}${infoSection(c)}${term1Section(c)}${term2Section(c)}
     <section class="section"><button class="btn danger" data-action="delete-class">ลบห้องนี้</button></section>
   </div>`;
 }
@@ -234,7 +310,27 @@ function updateEditing(patch) {
   if (c) saveClass({ ...c, ...patch });
 }
 
+app.addEventListener("input", (ev) => {
+  if (ev.target.id === "picker-q" && state.picker) {
+    state.picker = { query: ev.target.value };
+    render();
+  }
+});
+
 app.addEventListener("change", (ev) => {
+  if (ev.target.matches("[data-copy]") && ev.target.value) {
+    const c = editing();
+    const from = state.classes.find((x) => x.id === ev.target.value);
+    ev.target.value = "";
+    if (c && from)
+      askConfirm({
+        title: "แทนที่เนื้อหาเทอม 2 ของห้องนี้?",
+        text: `เนื้อหาเทอม 2 ของห้องนี้จะถูกแทนที่ด้วย ${from.term2TopicIds.length} เรื่องจาก ${from.teacher || "ยังไม่ระบุครู"} — ${from.school} ${from.room}`,
+        ok: "แทนที่",
+        run: () => updateEditing({ term2TopicIds: [...from.term2TopicIds] }),
+      });
+    return;
+  }
   const f = ev.target.dataset?.field;
   const c = editing();
   if (!f || !c) return;
@@ -246,6 +342,7 @@ app.addEventListener("change", (ev) => {
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
   if (state.confirm) { state.confirm = null; render(); }
+  else if (state.picker) { state.picker = null; render(); }
   else if (state.editingId) closeEditor();
 });
 
@@ -259,6 +356,12 @@ app.addEventListener("click", (ev) => {
   else if (a === "edit") openEditor(el.dataset.classId);
   else if (a === "retry") state.saveError?.retry();
   else if (a === "close-editor") closeEditor();
+  else if (a === "open-picker") { state.picker = { query: "" }; render(); document.getElementById("picker-q")?.focus(); }
+  else if (a === "close-picker") { state.picker = null; render(); }
+  else if (a === "pick") { const c = editing(); updateEditing({ term2TopicIds: L.addTopic(c.term2TopicIds, el.dataset.topic) }); }
+  else if (a === "create-topic") createTopic(state.picker.query.trim());
+  else if (a === "t2-move") { const c = editing(); updateEditing({ term2TopicIds: L.moveTopic(c.term2TopicIds, +el.dataset.index, +el.dataset.delta) }); }
+  else if (a === "t2-remove") { const c = editing(); updateEditing({ term2TopicIds: L.removeTopicAt(c.term2TopicIds, +el.dataset.index) }); }
   else if (a === "term1-topic") { const c = editing(); updateEditing({ term1End: { ...c.term1End, topicId: el.dataset.topic } }); }
   else if (a === "term1-status") { const c = editing(); updateEditing({ term1End: { ...c.term1End, status: el.dataset.status } }); }
   else if (a === "delete-class") {
@@ -274,7 +377,7 @@ function render() {
   const keep = active?.id && app.contains(active) && "value" in active
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
     : null;
-  app.innerHTML = header() + body() + editorView() + confirmView();
+  app.innerHTML = header() + body() + editorView() + pickerView() + confirmView();
   if (keep) {
     const el = document.getElementById(keep.id);
     if (el) {
