@@ -8,6 +8,19 @@ import { createRequire } from "node:module";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toBatchOps } from "../tools/seed-batch.mjs";
+import { CLASS_HEADER, TOPIC_HEADER, SEQUENCE_HEADER, classToRow, topicToRow, sequencesToRows } from "../sheet-format.js";
+
+// Seed data laid out as the Google Sheet the app reads.
+function sheetsFrom(seedData) {
+  const ops = toBatchOps(seedData, 1);
+  const classes = ops.filter((o) => o.path.startsWith("classes/")).map((o) => o.data);
+  const byId = Object.fromEntries(seedData.topics.map((t) => [t.id, t]));
+  return {
+    "ห้องเรียน": [CLASS_HEADER, ...classes.map((c) => classToRow(c, byId, 1))],
+    "เรื่อง": [TOPIC_HEADER, ...seedData.topics.map(topicToRow)],
+    "ลำดับมาตรฐาน": [SEQUENCE_HEADER, ...sequencesToRows(seedData.sequences, byId)],
+  };
+}
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 
@@ -53,8 +66,8 @@ export async function openPage({ seed: withSeed = true, width = 390, init = {}, 
   page.setDefaultTimeout(5000);
   await page.route("**/morphdom-umd.min.js", (r) => r.fulfill({ path: morphdomPath, contentType: "text/javascript" }));
   await page.route("**/html2canvas.min.js", (r) => r.fulfill({ path: html2canvasPath, contentType: "text/javascript" }));
-  const ops = withSeed ? toBatchOps(prepare ? prepare(structuredClone(seed)) : seed, 1) : [];
-  await page.addInitScript({ content: `window.__mockInit = ${JSON.stringify({ ops, ...init })};` });
+  const sheets = withSeed ? sheetsFrom(prepare ? prepare(structuredClone(seed)) : seed) : undefined;
+  await page.addInitScript({ content: `window.__mockInit = ${JSON.stringify({ sheets, ...init })};` });
   await page.addInitScript({ path: join(root, "tests/mock-claude.js") });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e));
@@ -79,7 +92,7 @@ test("seeded db shows 26 class rows", async () => {
 });
 
 test("use(db) null shows เปิดใน claude.ai", async () => {
-  const page = await openPage({ init: { dbNull: true } });
+  const page = await openPage({ init: { mcpNull: true } });
   await page.getByRole("heading", { name: /เปิดใน claude.ai/ }).waitFor();
   await page.close();
 });
@@ -149,8 +162,7 @@ test("typing survives a background snapshot", async () => {
   await openClass(page, "c03");
   const input = page.getByLabel("หมายเหตุ");
   await input.fill("กำลังพิมพ์");
-  await page.evaluate(() => window.__mock.docs.set("topics/x", { id: "x", name: "x", details: [] }));
-  await page.evaluate(() => window.claude.use("db").then((db) => db.doc("topics/y").set({ id: "y", name: "y", details: [] })));
+  await page.evaluate(() => window.__mock.tick());
   await page.waitForTimeout(100);
   assert.equal(await page.getByLabel("หมายเหตุ").inputValue(), "กำลังพิมพ์");
   await page.close();
@@ -354,21 +366,90 @@ test("editor keeps scroll position after removing a topic", async () => {
   await page.close();
 });
 
-test("db use() rejecting shows a connection error instead of loading forever", async () => {
+test("mcp use() rejecting shows the open-in-claude notice instead of loading forever", async () => {
   const page = await openPage({ init: { useRejects: true } });
-  await page.getByRole("heading", { name: "เชื่อมต่อฐานข้อมูลไม่ได้" }).waitFor();
+  await page.getByRole("heading", { name: /เปิดใน claude.ai/ }).waitFor();
   await page.close();
 });
 
-test("terminal snapshot error shows a connection error", async () => {
-  const page = await openPage({ init: { snapshotError: "classes" } });
-  await page.getByRole("heading", { name: "เชื่อมต่อฐานข้อมูลไม่ได้" }).waitFor();
+test("needs_reauth tells the user to reconnect Google Sheets", async () => {
+  const page = await openPage({ init: { watchError: "needs_reauth" } });
+  await page.getByRole("heading", { name: "เชื่อม Google Sheets ใหม่" }).waitFor();
+  await page.getByText("Settings → Connectors").waitFor();
   await page.close();
 });
 
-test("malformed class doc does not blank the page", async () => {
-  const bad = (s) => { s.classes.push({ school: "แปลก" }); return s; };
-  const page = await openPage({ prepare: bad });
+test("server_not_connected tells the user to add Google Sheets", async () => {
+  const page = await openPage({ init: { watchError: "server_not_connected" } });
+  await page.getByRole("heading", { name: "ยังไม่ได้เชื่อม Google Sheets" }).waitFor();
+  await page.close();
+});
+
+test("approval_required offers a button that loads the sheet", async () => {
+  const page = await openPage({ init: { watchError: "approval_required" } });
+  await page.getByRole("button", { name: "อนุญาตให้ใช้ Google Sheets" }).click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 26);
+  await page.close();
+});
+
+test("transient sheet error keeps the data and says it is stale", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.evaluate(() => { window.__mock.watchError = "server_unavailable"; window.__mock.tick(); });
+  await page.getByText("อัปเดตจาก Google Sheets ไม่ได้ชั่วคราว").waitFor();
+  assert.equal(await page.locator("[data-class-id]").count(), 26);
+  await page.close();
+});
+
+test("an edit made in the sheet shows up after the next refresh", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.evaluate(() => { window.__mock.setCell("ห้องเรียน", 2, 1, "ครูใหม่"); window.__mock.tick(); });
+  await page.getByRole("heading", { name: "ครูใหม่" }).waitFor();
+  await page.close();
+});
+
+test("refresh button re-reads the sheet", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.evaluate(() => window.__mock.setCell("ห้องเรียน", 1, 2, "บ้านตาลใหม่"));
+  await page.getByRole("button", { name: "รีเฟรช" }).click();
+  await page.getByText("บ้านตาลใหม่ · ม.1").waitFor();
+  await page.close();
+});
+
+test("save finds the row by id even after rows were reordered in the sheet", async () => {
+  const page = await openPage();
+  await openClass(page, "c03");
+  await page.evaluate(() => { const t = window.__mock.tabs.get("ห้องเรียน"); [t[1], t[3]] = [t[3], t[1]]; });
+  const input = page.getByLabel("ครู", { exact: true });
+  await input.fill("ครูย้ายแถว");
+  await input.press("Tab");
+  await page.waitForFunction(() => window.__mock.docs.get("classes/c03").teacher === "ครูย้ายแถว");
+  assert.equal((await stored(page, "c01")).teacher, "นิราซฟัน มะแซ");
+  assert.equal(await page.evaluate(() => window.__mock.tabs.get("ห้องเรียน")[1][0]), "c03");
+  await page.close();
+});
+
+test("deleting a class clears its row in the sheet", async () => {
+  const page = await openPage();
+  await openClass(page, "c05");
+  await page.getByRole("button", { name: "ลบห้องนี้" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "ลบ", exact: true }).click();
+  await page.waitForFunction(() => !window.__mock.docs.has("classes/c05"));
+  assert.deepEqual(await page.evaluate(() => window.__mock.tabs.get("ห้องเรียน")[5].filter(Boolean)), []);
+  await page.close();
+});
+
+test("a sparse row typed into the sheet does not blank the page", async () => {
+  const page = await openPage();
+  await page.locator("[data-class-id]").first().waitFor();
+  await page.evaluate(() => {
+    window.__mock.setCell("ห้องเรียน", 27, 0, "c99");
+    window.__mock.setCell("ห้องเรียน", 27, 2, "แปลก");
+    window.__mock.setCell("ห้องเรียน", 27, 4, "ไม่มีประเภทนี้");
+    window.__mock.tick();
+  });
   await page.waitForFunction(() => document.querySelectorAll("[data-class-id]").length === 27);
   assert.deepEqual(page.errors, []);
   await page.close();

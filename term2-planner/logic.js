@@ -4,7 +4,9 @@ export const UNASSIGNED = "ยังไม่ระบุครู";
 export const COURSE_TYPES = ["พื้นฐาน", "เพิ่มเติม", "เข้มข้น"];
 
 export function topicName(topicsById, id) {
-  return topicsById[id]?.name ?? "(ไม่พบเรื่อง)";
+  if (topicsById[id]) return topicsById[id].name;
+  // Topics typed by hand in the sheet that aren't in the topic list keep their own name.
+  return id?.startsWith("name:") ? id.slice(5) : "(ไม่พบเรื่อง)";
 }
 
 const th = (a, b) => a.localeCompare(b, "th");

@@ -47,6 +47,8 @@ button { cursor: pointer; }
 /* Header + tabs */
 .top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s3); }
 .top p { margin: 0; }
+.top-actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.top a, .notice a { color: var(--accent); }
 .tabs { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); padding: 3px; background: var(--card); }
 .tab { min-height: 38px; padding: 0 var(--s4); border: 0; border-radius: 7px; background: transparent; color: var(--muted); transition: background var(--ease), color var(--ease); }
 .tab[aria-selected="true"] { background: var(--accent); color: var(--on-accent); font-weight: 500; }

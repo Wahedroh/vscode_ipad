@@ -1,8 +1,10 @@
 import * as L from "./logic.js";
+import { createSheetsStore, SHEET_URL } from "./sheets-store.js";
 
 const state = {
   status: "loading", // loading | ready | nodb | error
-  loaded: { classes: false, topics: false, config: false },
+  error: null, // McpError code shown when status is "error"
+  stale: false, // last refresh from the sheet failed; data on screen may be old
   classes: [],
   topics: [],
   sequences: {},
@@ -42,8 +44,12 @@ function retryAll() {
 }
 // Per-document write queue: one write in flight per class, latest value wins.
 const queues = new Map();
+// Writes the sheet has accepted but a refresh hasn't shown yet; kept on screen until it does (max 60 s).
+const confirming = { classes: new Map(), topics: new Map(), deletes: new Map() };
+const CONFIRM_MS = 60000;
 
-let db = null;
+let store = null;
+let stopWatch = null;
 let downloads = null;
 const EXPORT_TITLE = "เนื้อหาคณิตศาสตร์เทอม 2 ปีการศึกษา 2569";
 const app = document.getElementById("app");
@@ -52,24 +58,56 @@ const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const topicsById = () => Object.fromEntries(state.topics.map((t) => [t.id, t]));
 
+const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>`;
+
 function header() {
   const tab = (key, label) =>
     `<button class="tab" role="tab" data-action="view" data-view="${key}" aria-selected="${state.view === key}">${label}</button>`;
   return `<header class="top">
-    <div><h1>เนื้อหาคณิตศาสตร์เทอม 2</h1><p class="muted small">ปีการศึกษา 2569 · ม.1</p></div>
-    <div class="tabs" role="tablist">${tab("list", "ห้องเรียน")}${tab("summary", "สรุป")}</div>
+    <div><h1>เนื้อหาคณิตศาสตร์เทอม 2</h1><p class="muted small">ปีการศึกษา 2569 · ม.1 · ข้อมูลจาก ${SHEET_LINK}</p></div>
+    <div class="top-actions">${state.status === "ready" ? `<button class="btn" data-action="refresh" title="ดึงข้อมูลล่าสุดจาก Google Sheets">${ICON_REFRESH}รีเฟรช</button>` : ""}
+    <div class="tabs" role="tablist">${tab("list", "ห้องเรียน")}${tab("summary", "สรุป")}</div></div>
   </header>`;
 }
 
 function body() {
   if (state.status === "nodb")
-    return `<div class="notice"><h2>เปิดใน claude.ai เพื่อใช้งาน</h2><p class="muted">หน้านี้เก็บข้อมูลในฐานข้อมูลของ Artifact ซึ่งใช้ได้เมื่อเปิดใน claude.ai และลงชื่อเข้าใช้แล้ว</p></div>`;
-  if (state.status === "error")
-    return `<div class="notice"><h2>เชื่อมต่อฐานข้อมูลไม่ได้</h2><p class="muted">โหลดหน้านี้ใหม่อีกครั้ง ถ้ายังไม่ได้ ให้ตรวจว่ายังลงชื่อเข้าใช้ claude.ai อยู่</p></div>`;
-  if (state.status === "loading") return `<p class="muted">กำลังโหลด…</p>`;
+    return `<div class="notice"><h2>เปิดใน claude.ai เพื่อใช้งาน</h2><p class="muted">หน้านี้อ่านและบันทึกข้อมูลลง Google Sheets ผ่าน connector ของคุณ ซึ่งใช้ได้เมื่อเปิดใน claude.ai และลงชื่อเข้าใช้แล้ว</p></div>`;
+  if (state.status === "error") return errorView(state.error);
+  if (state.status === "loading") return `<p class="muted">กำลังโหลดจาก Google Sheets…</p>`;
+  const stale = state.stale
+    ? `<div class="alert" role="status"><span>อัปเดตจาก Google Sheets ไม่ได้ชั่วคราว ข้อมูลที่เห็นอาจไม่ใช่ล่าสุด</span><button class="btn" data-action="refresh">ลองอีกครั้ง</button></div>`
+    : "";
   if (state.classes.length === 0)
-    return saveAlert() + `<div class="notice"><h2>ยังไม่มีข้อมูล</h2><p class="muted">ยังไม่มีห้องเรียนในฐานข้อมูล กด "เพิ่มห้อง" เพื่อเริ่ม หรือให้ Claude นำเข้าข้อมูลเทอม 1</p></div>${listView()}`;
-  return saveAlert() + (state.view === "summary" ? summaryView() : listView());
+    return stale + saveAlert() + `<div class="notice"><h2>ยังไม่มีข้อมูล</h2><p class="muted">แท็บ "ห้องเรียน" ในชีตยังว่าง กด "เพิ่มห้อง" หรือพิมพ์ลงชีตโดยตรง</p></div>${listView()}`;
+  return stale + saveAlert() + (state.view === "summary" ? summaryView() : listView());
+}
+
+const SHEET_LINK = `<a href="${SHEET_URL}" target="_blank" rel="noopener">เปิดไฟล์ชีต</a>`;
+const RETRY_BTN = `<button class="btn" data-action="reload-sheet">ลองใหม่</button>`;
+
+function errorView(code) {
+  const box = (title, text, action = RETRY_BTN) =>
+    `<div class="notice"><h2>${title}</h2><p class="muted">${text}</p><div class="toolbar" style="justify-content:flex-start">${action}</div></div>`;
+  switch (code) {
+    case "needs_reauth":
+      return box("เชื่อม Google Sheets ใหม่", "การเชื่อมต่อ Google Sheets หมดอายุ ไปที่ claude.ai → Settings → Connectors แล้วเชื่อม Google Sheets อีกครั้ง จากนั้นกดลองใหม่");
+    case "server_not_connected":
+    case "selection_required":
+    case "server_not_found":
+      return box("ยังไม่ได้เชื่อม Google Sheets", "เพิ่ม Google Sheets ใน claude.ai → Settings → Connectors ด้วยบัญชี Google ที่เปิดไฟล์ชีตนี้ได้ ถ้ามีหลายบัญชีให้เลือกบัญชีนั้น แล้วกดลองใหม่");
+    case "approval_required":
+    case "not_in_manifest":
+    case "consent_required":
+      return box("ต้องอนุญาตให้หน้านี้ใช้ Google Sheets", "หน้านี้อ่านและบันทึกข้อมูลลงไฟล์ชีตของคุณ กดปุ่มด้านล่างแล้วเลือกอนุญาต",
+        `<button class="btn primary" data-action="allow-sheets">อนุญาตให้ใช้ Google Sheets</button>`);
+    case "blocked_by_policy":
+      return box("องค์กรปิดการใช้ Google Sheets", "ผู้ดูแลองค์กรของคุณไม่อนุญาตให้ใช้ Google Sheets connector ในหน้านี้", "");
+    case "tool_error":
+      return box("อ่านไฟล์ชีตไม่ได้", `ตรวจว่าบัญชี Google ที่เชื่อมไว้เปิดไฟล์ได้ และไฟล์ยังมีแท็บ "ห้องเรียน" "เรื่อง" และ "ลำดับมาตรฐาน" · ${SHEET_LINK}`);
+    default:
+      return box("เชื่อมต่อ Google Sheets ไม่ได้ชั่วคราว", "ลองใหม่อีกครั้งในอีกสักครู่");
+  }
 }
 
 function summaryTable() {
@@ -226,10 +264,12 @@ async function saveClass(cls) {
       const r = q.next;
       q.next = null;
       if (pendingDeletes.has(r.id)) break;
-      await db.doc("classes/" + r.id).set(r);
+      await store.saveClass(r, topicsById());
+      confirming.classes.set(r.id, r);
       if (unsaved.get(r.id) === r) unsaved.delete(r.id);
     }
     q.running = false;
+    store.refresh();
     settled();
   } catch (e) {
     q.next = null;
@@ -371,8 +411,10 @@ async function saveTopic(topic) {
   pendingTopics.set(topic.id, topic);
   if (!state.topics.some((t) => t.id === topic.id)) state.topics = [...state.topics, topic];
   try {
-    await db.doc("topics/" + topic.id).set(topic);
+    await store.saveTopic(topic);
     pendingTopics.delete(topic.id);
+    confirming.topics.set(topic.id, { ...topic, at: Date.now() });
+    store.refresh();
     settled();
   } catch (e) {
     failed("topic", e);
@@ -446,8 +488,10 @@ async function deleteClass(id) {
   state.classes = state.classes.filter((c) => c.id !== id);
   render();
   try {
-    await db.doc("classes/" + id).delete();
+    await store.deleteClass(id);
     pendingDeletes.delete(id);
+    confirming.deletes.set(id, Date.now());
+    store.refresh();
     settled();
   } catch (e) {
     failed("delete", e);
@@ -532,6 +576,9 @@ app.addEventListener("click", (ev) => {
   else if (a === "add-class") addClass();
   else if (a === "edit") openEditor(el.dataset.classId);
   else if (a === "retry") retryAll();
+  else if (a === "refresh") { state.stale = false; render(); store?.refresh(); }
+  else if (a === "reload-sheet") reloadSheet();
+  else if (a === "allow-sheets") allowSheets();
   else if (a === "close-editor") closeEditor();
   else if (a === "open-picker") { rememberOpener(); state.picker = { query: "" }; render(); document.getElementById("picker-q")?.focus(); }
   else if (a === "close-picker") closePicker();
@@ -576,56 +623,86 @@ function render() {
   }
 }
 
-function markLoaded(key) {
-  state.loaded[key] = true;
-  if (Object.values(state.loaded).every(Boolean)) state.status = "ready";
+const sameClass = (a, b) => JSON.stringify({ ...a, updatedAt: 0 }) === JSON.stringify({ ...b, updatedAt: 0 });
+const AUTHZ = ["needs_reauth", "server_not_connected", "selection_required", "server_not_found", "approval_required", "not_in_manifest", "consent_required", "blocked_by_policy"];
+
+// Merge a fresh read of the sheet with edits this page made that the read doesn't show yet.
+function applySheet({ classes, topics, sequences }) {
+  const now = Date.now();
+  for (const [id, c] of confirming.classes) {
+    const s = classes.find((x) => x.id === id);
+    if ((s && sameClass(s, c)) || now - c.updatedAt > CONFIRM_MS) confirming.classes.delete(id);
+  }
+  for (const [id, t] of confirming.topics) if (topics.some((x) => x.id === id) || now - t.at > CONFIRM_MS) confirming.topics.delete(id);
+  for (const [id, at] of confirming.deletes) if (!classes.some((x) => x.id === id) || now - at > CONFIRM_MS) confirming.deletes.delete(id);
+
+  const hidden = (id) => pendingDeletes.has(id) || confirming.deletes.has(id);
+  const local = (id) => unsaved.get(id) ?? confirming.classes.get(id);
+  const ids = new Set(classes.map((c) => c.id));
+  state.classes = [
+    ...classes.filter((c) => !hidden(c.id)).map((c) => local(c.id) ?? c),
+    ...[...unsaved.values(), ...confirming.classes.values()].filter((c, i, all) => !ids.has(c.id) && !hidden(c.id) && all.findIndex((x) => x.id === c.id) === i),
+  ];
+  const topicIds = new Set(topics.map((t) => t.id));
+  const extra = [...pendingTopics.values(), ...confirming.topics.values()].filter((t) => !topicIds.has(t.id)).map(({ id, name, details }) => ({ id, name, details }));
+  state.topics = [...topics, ...extra];
+  state.sequences = sequences;
+  state.status = "ready";
+  state.stale = false;
   render();
 }
 
-// Snapshot error callbacks only receive terminal errors: the listener is dead, so say so instead of showing stale data.
-function lostConnection(label, e) {
-  console.error(label, e);
-  state.status = "error";
+function sheetError(e) {
+  console.error("sheets", e);
+  const code = e?.code ?? "upstream_error";
+  if (["not_granted", "capability_disabled", "capability_removed"].includes(code)) state.status = "nodb";
+  else if (AUTHZ.includes(code) || state.status !== "ready") {
+    // Access problems retract what's on screen; anything before the first load has nothing to keep.
+    state.status = "error";
+    state.error = AUTHZ.includes(code) || code === "tool_error" ? code : "transient";
+    state.classes = [];
+  } else state.stale = true;
   render();
+}
+
+function startWatch() {
+  stopWatch?.();
+  stopWatch = store.watch(applySheet, sheetError);
+}
+
+async function reloadSheet() {
+  state.status = "loading";
+  state.error = null;
+  render();
+  startWatch();
+  store.refresh();
+}
+
+async function allowSheets() {
+  try {
+    await store.allow();
+    reloadSheet();
+  } catch (e) {
+    sheetError(e);
+  }
 }
 
 async function boot() {
   render();
   window.claude?.use?.("downloads").then((d) => { downloads = d ?? null; render(); }, () => {});
+  let mcp = null;
   try {
-    db = (await window.claude?.use?.("db")) ?? null;
+    mcp = (await window.claude?.use?.("mcp")) ?? null;
   } catch (e) {
-    return lostConnection("db", e);
+    console.error("mcp", e);
   }
-  if (!db) {
+  if (!mcp) {
     state.status = "nodb";
     return render();
   }
-  db.collection("classes").onSnapshot(
-    (snap) => {
-      const stored = snap.docs.map((d) => L.normalizeClass({ id: d.id, ...d.data() })).filter((c) => !pendingDeletes.has(c.id));
-      const ids = new Set(stored.map((c) => c.id));
-      state.classes = [...stored.map((c) => unsaved.get(c.id) ?? c), ...[...unsaved.values()].filter((c) => !ids.has(c.id))];
-      markLoaded("classes");
-    },
-    (e) => lostConnection("classes", e),
-  );
-  db.collection("topics").onSnapshot(
-    (snap) => {
-      const stored = snap.docs.map((d) => d.data());
-      const ids = new Set(stored.map((t) => t.id));
-      state.topics = [...stored, ...[...pendingTopics.values()].filter((t) => !ids.has(t.id))];
-      markLoaded("topics");
-    },
-    (e) => lostConnection("topics", e),
-  );
-  db.doc("meta/config").onSnapshot(
-    (snap) => {
-      state.sequences = snap.exists ? snap.data().sequences ?? {} : {};
-      markLoaded("config");
-    },
-    (e) => lostConnection("config", e),
-  );
+  store = createSheetsStore(mcp);
+  startWatch();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && state.status === "ready") store.refresh(); });
 }
 
 boot();
