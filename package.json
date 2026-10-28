@@ -1,0 +1,8 @@
+{
+  "name": "term2-planner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test term2-planner/tests/*.test.mjs"
+  }
+}
